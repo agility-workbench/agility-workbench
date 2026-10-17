@@ -100,13 +100,16 @@ const options = { columnSelection: true } satisfies GridOptions;
 The same column can be created programmatically:
 
 ```ts
-api.dispatch({
-  type: "addSparklineColumn",
-  targetColId: "jan",
+const colId = api.addSparklineColumn({
   colIds: ["jan", "feb", "mar", "apr", "may", "jun"],
   sparklineType: "line",
+  targetColId: "jan", // optional: whose formatter the point tooltips use
 });
 ```
+
+It returns the new column's colId (pass `colId` to choose it), or `null` when none
+of `colIds` names a column. The column is transient: the next `setColumnDefs` that
+does not list it removes it.
 
 Point tooltips reuse a value formatter from the selection: the menu's target
 column wins if it declares one explicitly, otherwise the first selected column
@@ -115,10 +118,9 @@ resizable, movable, and hideable, but not sortable, filterable, or groupable.
 
 On a group row the generated column draws the group's values of the selected
 columns — their aggregates. Assign an aggregate to each source column (the
-column menu's aggregate picker, `api.setAggregates`, or an `aggregateModelSet`
-action) and a sparkline over summed months draws each group's monthly sums. A
-source column without an aggregate contributes no point, so a group with no
-aggregates draws nothing.
+column menu's aggregate picker or `api.setAggregates`) and a sparkline over
+summed months draws each group's monthly sums. A source column without an
+aggregate contributes no point, so a group with no aggregates draws nothing.
 
 ## Columns that hold a series
 

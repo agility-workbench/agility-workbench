@@ -1,0 +1,166 @@
+---
+title: Localization
+sidebar_position: 23
+---
+
+import { LocaleKeyTable } from "@site/src/components/LocaleKeyTable";
+
+# Localization
+
+Every string the grid writes on its own — visible text, `aria-label`s, tooltips,
+placeholders, menu items, filter operators, screen-reader announcements, keyboard
+shortcut labels and default column headers — is one key of `GridLocaleText`.
+Translate them with a `localeText` map, or in code with `getLocaleText`.
+
+## Translating with `localeText`
+
+```ts
+import { createGrid, type GridLocaleText } from "@agility-workbench/grid";
+
+const de: Partial<GridLocaleText> = {
+  rowsPerPage: "Zeilen pro Seite",
+  page: "Seite",
+  pageOfTotalOption: "{page} von {total}",
+  sortAscending: "Aufsteigend sortieren",
+  sortDescending: "Absteigend sortieren",
+  selectAll: "(Alle auswählen)",
+  blanks: "(Leer)",
+  rowsSelectedOne: "{count} Zeile ausgewählt",
+  rowsSelectedOther: "{count} Zeilen ausgewählt",
+};
+
+createGrid(host, { columnDefs, rowData, pagination: true, localeText: de });
+```
+
+```tsx
+<Grid columnDefs={columnDefs} data={rows} localeText={de} />
+```
+
+```html
+<awb-grid [columnDefs]="columnDefs" [rowData]="rows" [localeText]="de" />
+```
+
+The map is partial: a key you leave out keeps its English default. The keys are
+typed, so a misspelt key is a compile error.
+
+- **Placeholders.** Strings with variables carry `{name}` placeholders
+  (`"Page {page} of {total}"`). Keep the names; move them wherever the sentence
+  needs them.
+- **Plurals.** A count-dependent string has two keys, `…One` and `…Other`
+  (`rowsSelectedOne` / `rowsSelectedOther`). The grid picks `…One` when the count
+  is exactly 1. That is enough for any language with one singular and one plural
+  form.
+- **Dedicated options win.** `loadingMessage`, `noRowsMessage`,
+  `pivotNoValuesMessage`, `pivotEmptyMessage`, `paginationUnknownTotalTooltip`,
+  `filterParams.miniFilterPlaceholder`,
+  `paginationControls.aggregateScope.unavailableMessage`, `groupTotalRowLabel` and
+  a column's own `label` override the matching keys (`loading`, `noRows`, …).
+
+## Translating in code with `getLocaleText`
+
+`getLocaleText` is called for every string. It receives the key, the text the grid
+would otherwise use (your `localeText` entry or the English default, with its
+placeholders still in) and the placeholder values. Whatever it returns is
+interpolated afterwards, and it wins over `localeText`.
+
+Use it for plural rules with more than two forms, ICU messages, or a translation
+library:
+
+```ts
+const plural = new Intl.PluralRules("pl");
+const rowsSelected = {
+  one: "{count} wiersz zaznaczony",
+  few: "{count} wiersze zaznaczone",
+  many: "{count} wierszy zaznaczonych",
+  other: "{count} wiersza zaznaczonego",
+};
+
+createGrid(host, {
+  columnDefs,
+  rowData,
+  localeText: pl, // the plain strings
+  getLocaleText: ({ key, defaultValue, variableValues }) => {
+    if (key === "rowsSelectedOne" || key === "rowsSelectedOther") {
+      return rowsSelected[plural.select(Number(variableValues?.count))];
+    }
+    return defaultValue;
+  },
+});
+```
+
+With a library such as i18next, map the grid's keys into a namespace and fall
+back to the default:
+
+```ts
+getLocaleText: ({ key, defaultValue, variableValues }) =>
+  i18next.t(`grid.${key}`, { defaultValue, ...variableValues }),
+```
+
+The resolver applies `{placeholder}` interpolation after the callback, so the
+callback may return text with placeholders still in it or fully formatted text.
+
+## Reusing the grid's strings in your own components
+
+`api.getLocaleText(key, variableValues?)` resolves a key exactly as the grid
+does, so a custom header component, cell renderer or menu item can say "Sort
+Ascending" in the grid's language:
+
+```ts
+const api = createGrid(host, {
+  columnDefs: [
+    {
+      key: "region",
+      label: "Region",
+      columnMenu: ({ items }) => [
+        ...items,
+        { id: "csv", label: api.getLocaleText("exportAsCsv"), onClick: () => api.exportDataAsCsv() },
+      ],
+    },
+  ],
+  rowData,
+  localeText: de,
+});
+
+class MyHeader {
+  init(params) {
+    this.eGui.title = params.api.getLocaleText("shortcutSortColumn");
+  }
+}
+```
+
+For a `…One` / `…Other` pair, pick the key from the count and pass `{ count }`.
+
+## Switching language
+
+`localeText` and `getLocaleText` are creation-only: the grid reads them once.
+To switch language, create the grid again — in React, change the `key` of
+`<Grid>`; in Angular, re-render `<awb-grid>` (for example inside an `@if` or
+`@for` keyed by the locale); with `createGrid`, `destroy()` and create it
+again. The bindings warn in development if either changes on a mounted grid.
+
+## Numbers and dates
+
+Formatting is separate from translation. Number, currency and date cells follow
+the column's `formatterOptions` — `locale` (default `"en-US"`), `currency`,
+`format` and the number options — and the set filter's tree layout names its
+months in that locale too:
+
+```ts
+{ key: "amount", type: ColumnType.CURRENCY, formatterOptions: { locale: "de-DE", currency: "EUR" } }
+```
+
+## What stays as written
+
+- Text your application supplies — column labels, menu items, `filterOptions`
+  labels, cell values and formatted values.
+- Messages for developers: console warnings and the errors passed to `onError`.
+- Keyboard key names in menu accelerators and the shortcut table (`Ctrl+C`,
+  `Esc`), which follow the platform's convention.
+- Export file names (`grid-all.csv`) and the Excel sheet name (`Export`).
+- The blank-value group key `(Blanks)` used by row grouping and pivot column
+  headers, which is also the group's identity; the set filter's `(Blanks)` row
+  is translatable (`blanks`).
+
+## All keys
+
+<LocaleKeyTable />

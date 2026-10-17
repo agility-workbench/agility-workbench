@@ -53,13 +53,13 @@ import type {
 import type { CellEditor } from "@agility-workbench/grid";
 import { adaptCellEditor, ReactCellEditor } from "./cellEditor";
 
-export type ReactCellRenderer =
-  | React.ComponentType<CellRendererParams>
-  | React.ExoticComponent<CellRendererParams>;
+export type ReactCellRenderer<TData = any> =
+  | React.ComponentType<CellRendererParams<TData>>
+  | React.ExoticComponent<CellRendererParams<TData>>;
 
-export type ReactTooltipComponent =
-  | React.ComponentType<TooltipComponentParams>
-  | React.ExoticComponent<TooltipComponentParams>;
+export type ReactTooltipComponent<TData = any> =
+  | React.ComponentType<TooltipComponentParams<TData>>
+  | React.ExoticComponent<TooltipComponentParams<TData>>;
 
 export type ReactRowTooltipPresentation = Omit<RowTooltipPresentation, "component"> & {
   component?: TooltipComponent | ReactTooltipComponent;
@@ -69,13 +69,13 @@ export type ReactRowPresentation = Omit<RowPresentation, "tooltip"> & {
   tooltip?: ReactRowTooltipPresentation | false | null;
 };
 
-export type ReactGetRowPresentation = (
-  params: RowPresentationParams,
+export type ReactGetRowPresentation<TData = any> = (
+  params: RowPresentationParams<TData>,
 ) => ReactRowPresentation | null | undefined;
 
-export type ReactActionFrameComponent =
-  | React.ComponentType<ActionFrameComponentParams>
-  | React.ExoticComponent<ActionFrameComponentParams>;
+export type ReactActionFrameComponent<TData = any> =
+  | React.ComponentType<ActionFrameComponentParams<TData>>
+  | React.ExoticComponent<ActionFrameComponentParams<TData>>;
 
 /**
  * A React component for a column header slot (`headerComponent` = content only, `headerCellComponent`
@@ -108,8 +108,12 @@ export type ReactFilterParams = Omit<
   groupComponent?: SetFilterGroupComponent | ReactSetFilterGroupComponent;
 };
 
-export type ReactColDef = Omit<
-  ColDef,
+/**
+ * A React-aware column definition: a core `ColDef` whose component fields may also be React
+ * components. `TData` is the row type (default `any`), exactly as on `ColDef<TData>`.
+ */
+export type ReactColDef<TData = any> = Omit<
+  ColDef<TData>,
   | "cellRenderer"
   | "cellEditor"
   | "children"
@@ -120,15 +124,15 @@ export type ReactColDef = Omit<
   | "headerComponent"
   | "headerCellComponent"
 > & {
-  cellRenderer?: CellRenderer | CellRendererAlias | ReactCellRenderer;
-  cellEditor?: CellEditor | ReactCellEditor;
-  tooltipComponent?: TooltipComponent | ReactTooltipComponent;
+  cellRenderer?: CellRenderer<TData> | CellRendererAlias | ReactCellRenderer<TData>;
+  cellEditor?: CellEditor<TData> | ReactCellEditor<TData>;
+  tooltipComponent?: TooltipComponent<TData> | ReactTooltipComponent<TData>;
   headerTooltip?: string | TooltipComponent | ReactTooltipComponent;
-  actionFrameComponent?: ActionFrameComponent | ReactActionFrameComponent;
+  actionFrameComponent?: ActionFrameComponent<TData> | ReactActionFrameComponent<TData>;
   filterParams?: ReactFilterParams;
   headerComponent?: HeaderComponent | ReactHeaderComponent;
   headerCellComponent?: HeaderComponent | ReactHeaderComponent;
-  children?: ReactColDef[];
+  children?: ReactColDef<TData>[];
 };
 
 /**
@@ -136,14 +140,14 @@ export type ReactColDef = Omit<
  * identity/structure fields that never inherit (see `NON_DEFAULTABLE_COLDEF_KEYS`). Mirrors core
  * `DefaultColDef`, but its component fields may be React components.
  */
-export type ReactDefaultColDef = Omit<ReactColDef, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
+export type ReactDefaultColDef<TData = any> = Omit<ReactColDef<TData>, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
 
 /**
  * React-aware shape of the partial column defs the grid layers over a synthesized column
  * (`groupColumnDef`, `pivotResultColumnDef`): a `Partial<ReactColDef>`, so component fields may be
  * React components.
  */
-export type ReactPartialColDef = Partial<Omit<ReactColDef, "children">>;
+export type ReactPartialColDef<TData = any> = Partial<Omit<ReactColDef<TData>, "children">>;
 
 const reactRendererCache = new WeakMap<object, CellRendererClass>();
 const reactTooltipCache = new WeakMap<object, TooltipComponentClass>();

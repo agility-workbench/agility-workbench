@@ -27,9 +27,9 @@ export interface ReactCellEditorHandle {
  * A React cell editor: a forwardRef component that receives ICellEditorParams as props and exposes
  * a ReactCellEditorHandle via useImperativeHandle.
  */
-export type ReactCellEditor =
-  | React.ForwardRefExoticComponent<ICellEditorParams & React.RefAttributes<ReactCellEditorHandle>>
-  | React.ComponentType<ICellEditorParams & { ref?: React.Ref<ReactCellEditorHandle> }>;
+export type ReactCellEditor<TData = any> =
+  | React.ForwardRefExoticComponent<ICellEditorParams<TData> & React.RefAttributes<ReactCellEditorHandle>>
+  | React.ComponentType<ICellEditorParams<TData> & { ref?: React.Ref<ReactCellEditorHandle> }>;
 
 const reactEditorCache = new WeakMap<object, CellEditorClass>();
 

@@ -1,11 +1,12 @@
 import { GridCore } from "../../core/core";
+import type { LocaleTextResolver } from "../../interfaces/locale";
 import type { GridSheet, GridViewState, SheetsOptions, SheetTabColor } from "../../interfaces/gridView";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import type { MenuItem } from "../../interfaces/menuItem";
 import { isPivotResultColId } from "../../interfaces/pivot";
 import { createRecordId } from "../../misc";
 import { MenuRenderer } from "../menuRenderer";
-import { createCustomColorSwatch, createSheetColorSwatch, SHEET_COLORS } from "./sheetColors";
+import { createCustomColorSwatch, createSheetColorSwatch, localizedSheetColors } from "./sheetColors";
 
 interface SheetsRendererParams {
   core: GridCore;
@@ -51,13 +52,15 @@ export class SheetsRenderer {
   /** The offscreen `<input type="color">` behind "Custom…", built on first use. */
   private colorInput: HTMLInputElement | null = null;
 
+  private readonly t: LocaleTextResolver = (key, values) => this.params.core.getLocaleText(key, values);
+
   constructor(private params: SheetsRendererParams) {
     this.scrollWrap = document.createElement("div");
     this.scrollWrap.className = "pte-sheet-scroll-wrap";
     this.tablist = document.createElement("div");
     this.tablist.className = "pte-sheet-tabs";
     this.tablist.setAttribute("role", "tablist");
-    this.tablist.setAttribute("aria-label", "Sheets");
+    this.tablist.setAttribute("aria-label", this.t("sheets"));
     this.scrollWrap.appendChild(this.tablist);
 
     this.addButton = document.createElement("button");
@@ -71,8 +74,8 @@ export class SheetsRenderer {
     const pivotable = this.params.core.isPivotSupported();
     this.addButton.disabled = !pivotable;
     const label = pivotable
-      ? "Add pivot sheet"
-      : "Pivot sheets need the client-side row model without tree data";
+      ? this.t("addPivotSheet")
+      : this.t("pivotSheetsUnsupported");
     this.addButton.setAttribute("aria-label", label);
     this.addButton.title = label;
     this.addButton.addEventListener("click", () => this.addPivotSheet());
@@ -132,7 +135,7 @@ export class SheetsRenderer {
     this.sheetsOptions = options;
     this.sheets = [...(options?.sheets ?? [])];
     if (options && this.sheets.length === 0) {
-      this.sheets = [{ id: "data", name: "Data" }];
+      this.sheets = [{ id: "data", name: this.t("dataSheetName") }];
     }
     if (options?.activeSheetId !== undefined) {
       this.activeSheetId = options.activeSheetId;
@@ -257,13 +260,19 @@ export class SheetsRenderer {
 
   private nextPivotSheetName(): string {
     const used = new Set<number>();
+    // The localized template, e.g. "Pivot {index}": a name is taken when it is the template with a
+    // number in the slot.
+    const [before, after = ""] = this.t("pivotSheetName").split("{index}");
     for (const sheet of this.sheets) {
-      const match = /^Pivot (\d+)$/.exec(sheet.name);
-      if (match) used.add(Number(match[1]));
+      const name = sheet.name;
+      const digits = name.length > before.length + after.length && name.startsWith(before) && name.endsWith(after)
+        ? name.slice(before.length, name.length - after.length)
+        : "";
+      if (/^\d+$/.test(digits)) used.add(Number(digits));
     }
     let n = 1;
     while (used.has(n)) n++;
-    return `Pivot ${n}`;
+    return this.t("pivotSheetName", { index: n });
   }
 
   private renameSheet(sheetId: string, name: string): void {
@@ -304,7 +313,7 @@ export class SheetsRenderer {
       : source.state;
     const copy: GridSheet = {
       id: createRecordId("sheet"),
-      name: `${source.name} (copy)`,
+      name: this.t("sheetCopyName", { name: source.name }),
       ...(source.color ? { color: source.color } : {}),
       ...(state ? { state: structuredClone(state) } : {}),
     };
@@ -409,7 +418,7 @@ export class SheetsRenderer {
     input.type = "text";
     input.className = "pte-sheet-rename-input";
     input.value = sheet.name;
-    input.setAttribute("aria-label", `Rename sheet ${sheet.name}`);
+    input.setAttribute("aria-label", this.t("renameSheet", { name: sheet.name }));
     // The input stands in for the tab, so it carries the tab's identity: `focusTab` addresses it,
     // and the grid root's aria-labelledby points at this id while the active sheet is renamed.
     input.id = this.tabElementId(sheet.id);
@@ -441,7 +450,7 @@ export class SheetsRenderer {
    */
   private paletteFor(sheet: GridSheet): readonly SheetTabColor[] {
     const colors = this.sheetsOptions?.colors;
-    if (colors == null) return SHEET_COLORS;
+    if (colors == null) return localizedSheetColors(this.t);
     return typeof colors === "function" ? colors(sheet) : colors;
   }
 
@@ -471,7 +480,7 @@ export class SheetsRenderer {
     return [
       {
         id: "sheetColorNone",
-        label: "None",
+        label: this.t("sheetColorNone"),
         command: "sheet.color",
         payload: null,
         left: createSheetColorSwatch(),
@@ -497,7 +506,7 @@ export class SheetsRenderer {
             : []),
           {
             id: "sheetColorCustom",
-            label: "Custom…",
+            label: this.t("sheetColorCustom"),
             command: "sheet.colorCustom",
             left: createCustomColorSwatch(currentIsCustom ? sheet.color : undefined),
             right: currentIsCustom ? "icon-check" : undefined,
@@ -590,24 +599,24 @@ export class SheetsRenderer {
     // where something moved the strip while the menu was open.
     if (sheet && this.customColorFor(sheet)) this.positionColorInput(sheetId);
     const items: MenuItem[] = [
-      { id: "sheetRename", label: "Rename", command: "sheet.rename" },
+      { id: "sheetRename", label: this.t("rename"), command: "sheet.rename" },
       ...(sheet && (palette.length > 0 || this.customColorFor(sheet))
-        ? [{ id: "sheetColor", label: "Change color", subMenu: this.colorMenuItems(sheet, palette) }]
+        ? [{ id: "sheetColor", label: this.t("changeColor"), subMenu: this.colorMenuItems(sheet, palette) }]
         : []),
-      { id: "sheetDuplicate", label: "Duplicate", command: "sheet.duplicate" },
+      { id: "sheetDuplicate", label: this.t("duplicate"), command: "sheet.duplicate" },
       {
         id: "sheetDelete",
-        label: "Delete",
+        label: this.t("delete"),
         command: "sheet.delete",
         disabled: this.sheets.length <= 1,
-        title: this.sheets.length <= 1 ? "The last sheet cannot be deleted" : undefined,
+        title: this.sheets.length <= 1 ? this.t("lastSheetCannotBeDeleted") : undefined,
       },
     ];
     this.params.menuRenderer.open({
       clientX: e.clientX,
       clientY: e.clientY,
       items,
-      ariaLabel: "Sheet actions",
+      ariaLabel: this.t("sheetActions"),
       onItemClick: (item) => {
         if (item.command === "sheet.rename") this.startRename(sheetId);
         else if (item.command === "sheet.color") this.setSheetColor(sheetId, item.payload ?? null);

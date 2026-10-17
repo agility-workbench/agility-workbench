@@ -29,6 +29,9 @@ export function Products() {
 
 `ReactColDef` accepts React cell renderers, editors, tooltips, and ActionFrame
 components. `<Grid />` also accepts every core `GridOptions` field as a prop.
+Both take your row type: `ReactColDef<Trade>[]` and `<Grid<Trade> … />` type the
+row in callbacks, `ref`, `apiRef` and `onGridReady` (see
+[Typing your rows](../api/column-definitions.mdx#typing-your-rows)).
 
 Use `ref`, `apiRef`, or `onGridReady` for imperative API access. `onGridReady`
 fires once per grid instance with the columns and row data already applied, so
@@ -187,7 +190,11 @@ on `"user"` and restoring a saved layout never echoes back into storage (see
 `onError` is an extra notification for failed row-model requests; the grid handles the failure
 as it would without it.
 
-For other events, subscribe with `api.on(eventName, handler)`.
+Every core event has a prop — `onRowGroupOpened`, `onFirstDataRendered`, `onRowDataUpdated`,
+`onBodyScroll`, `onFocusChanged` and the rest of the
+[callbacks table](../api/grid-options.mdx#event-callbacks) — and each is bridged the same way:
+passing a new function on a re-render is live, without recreating the grid.
+`api.on(eventName, handler)` still works for any event.
 
 ## React-aware menu items and icons
 

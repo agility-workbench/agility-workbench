@@ -66,8 +66,8 @@ import { AppShortcutRegistry } from "./interaction/shortcutPolicy";
 import { FilterUpdateHandler } from "./filterUpdateHandler";
 import { ColumnLayoutRenderer, measureVerticalScrollbarGutter } from "./layout/columnLayout";
 import { PinnedSectionLayoutRenderer } from "./layout/pinnedSectionLayout";
-import { DEFAULT_LOADING_MESSAGE, LoadingOverlayRenderer } from "./overlay/loading";
-import { DEFAULT_NO_ROWS_MESSAGE, NoRowsOverlayRenderer } from "./overlay/noRows";
+import { LoadingOverlayRenderer } from "./overlay/loading";
+import { NoRowsOverlayRenderer } from "./overlay/noRows";
 import { QuickFilterWidget } from "./quickFilter/quickFilterWidget";
 import type { QuickFilterRestoreState } from "./quickFilter/quickFilterWidget";
 import type { QuickFilterOptions } from "../interfaces/gridOptions";
@@ -97,6 +97,8 @@ export class GridRenderer {
   _exportRenderer: ExportRenderer;
   _columnMenuOpener: ColumnMenuOpener;
   _bodyMenuOpener: BodyMenuOpener | null = null;
+  /** The body offsets the last `bodyScroll` reported, to drop echo ticks that moved nothing. */
+  private _lastBodyScroll = { top: 0, left: 0 };
   _filterUpdateHandler: FilterUpdateHandler;
   _aggregateCalculator: AggregateCalculator;
   _aggregateModelController: AggregateModelController;
@@ -240,7 +242,7 @@ export class GridRenderer {
     this.root.appendChild(this._keyboardNavigationAnnouncer);
     // The toast above is visible and hidden while idle, so AT never sees it. This second region is
     // sr-only and carries the grid's state announcements.
-    this._announcer = new GridAnnouncer(this.root);
+    this._announcer = new GridAnnouncer(this.root, (key, values) => this.core.getLocaleText(key, values));
     // In "text" cell-selection mode, revert body cells to native browser text selection (like a
     // plain HTML table). A root class scopes the user-select/cursor override to this grid instance.
     if (this.core.options.cellSelection === "text") {
@@ -260,7 +262,8 @@ export class GridRenderer {
     // The command lookup closes over the router, which is built later in this constructor; menus
     // only open long after both exist.
     this._menuRenderer = new MenuRenderer(this.root, (command) =>
-      this._keyboardRouter.getShortcutInfo().find(row => row.command === command)?.chord ?? null);
+      this._keyboardRouter.getShortcutInfo().find(row => row.command === command)?.chord ?? null,
+      (key, values) => this.core.getLocaleText(key, values));
     this._coreEventBinder = new GridRendererCoreEventBinder({
       core: this.core,
       setLoading: (isLoading) => this.setLoading(isLoading),
@@ -275,6 +278,9 @@ export class GridRenderer {
       onColumnWidthsChanged: (params) => {
         this._modelChangeHandler.onColumnWidthsChanged(params);
         this._pinnedRowsRenderer?.render(undefined, true);
+        // A settled width can re-wrap an autoHeaderHeight label (drag frames are left to the
+        // header's own ResizeObserver).
+        if (params.final) this._headerRenderer.remeasureAutoHeight();
       },
       onDataChanged: (params) => {
         this._modelChangeHandler.onDataChanged(params);
@@ -306,7 +312,7 @@ export class GridRenderer {
       onKeyboardNavigationModeChanged: ({ mode }) => {
         this.root.dataset.keyboardNavigationMode = mode;
         this._keyboardNavigationAnnouncer.textContent =
-          mode === "hierarchy" ? "Hierarchy navigation mode" : "Grid navigation mode";
+          this.core.getLocaleText(mode === "hierarchy" ? "hierarchyNavigationMode" : "gridNavigationMode");
         this._keyboardNavigationAnnouncer.classList.add("is-visible");
         if (this._keyboardNavigationAnnouncementTimer) {
           clearTimeout(this._keyboardNavigationAnnouncementTimer);
@@ -501,6 +507,14 @@ export class GridRenderer {
       getContainerEl: () => this._rootAttachmentRenderer.getContainerEl(),
       openColumnMenu: (colID, anchorEl) => this._columnMenuOpener.openColumnMenu("columnMenuButton", colID, { anchorEl }),
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
+      // autoHeaderHeight grew or shrank the header: what setHeaderHeights re-lays out, minus the
+      // rebuild (the header already wrote its new geometry).
+      onHeightChanged: () => {
+        if (!this._columnLayoutRenderer) return;
+        this._columnLayoutRenderer.updateScrollStrip();
+        this._pinnedRowsRenderer?.updateLayout();
+        this._maybeUpdatePoolSize();
+      },
     });
     const headerRefs = this._headerRenderer.getRefs();
 
@@ -589,12 +603,14 @@ export class GridRenderer {
           position?: RowScrollPosition,
         ) => void;
         ensureColumnVisible: (colIdx: number) => void;
+        scrollTo: (position: { topPx?: number; leftPx?: number }) => void;
       }) => void;
     };
     apiWithScroll.setScrollController?.({
       ensureRowVisible: (viewIdx, rowPinned, position) =>
         this.ensureRowVisible(viewIdx, rowPinned, position),
       ensureColumnVisible: (colIdx) => this.ensureColumnVisible(colIdx),
+      scrollTo: (position) => this.scrollTo(position),
     });
     // Expose live reconfiguration on the public API (api.updateGridOptions). The api routes each
     // option to its owner; this hands it the renderer-owned half. Probed structurally to avoid a
@@ -667,7 +683,7 @@ export class GridRenderer {
       this._aggregateModelController.setAggregateScope("none");
     }, (column, activeType, anchorEl) => {
       this._columnMenuOpener.openAggregateMenu(column.instanceID, activeType, anchorEl);
-    });
+    }, (key, values) => this.core.getLocaleText(key, values));
     const aggregateRefs = this._aggregateRowRenderer.getRefs();
     this._aggregateLeadingCells = [];
     this._aggregateLeftCells = [];
@@ -756,6 +772,13 @@ export class GridRenderer {
       onClick: (e) => this._headerInteractionHandler.onDocumentClick(e),
       onKeyDown: (e) => this._onKeyDown(e),
       onRootFocus: () => this._onRootFocus(),
+      // Touch / pen gestures (renderer/interaction/touchGestures.ts).
+      isFillHandleTarget: (target) => this._fillHandle.isHandleTarget(target),
+      isFillDragging: () => this._fillHandle.isDragging(),
+      onFillTouchMove: (target) => this._fillHandle.updateDrag(this._selectionRenderer.getCellLocation(target)),
+      onFillCancel: () => this._fillHandle.cancelDrag(),
+      isColumnResizing: () => this._columnInteractionRenderer.isResizing(),
+      onColumnDragCancel: () => this._columnInteractionRenderer.cancelColumnDrag(),
     });
     this._columnLayoutRenderer = new ColumnLayoutRenderer({
       core: this.core,
@@ -849,6 +872,23 @@ export class GridRenderer {
         this._pinnedRowsRenderer.syncHorizontal(left, center, right);
         // The ActionFrame popover is position: fixed; horizontal scroll moves its cell under it.
         this._actionFrameRenderer?.onWindowUpdate();
+      },
+      // The body's vertical scroll and the centre section's horizontal offset, reported once per
+      // movement: the header, scrollbar strip and centre section echo each other's scrollLeft, so
+      // a tick that moved neither offset is one of those echoes and is dropped.
+      onScroll: () => {
+        const top = bodyWrapper.body.scrollTop;
+        const left = bodyWrapper.centerSpacer.scrollLeft;
+        const last = this._lastBodyScroll;
+        const vertical = top !== last.top;
+        const horizontal = left !== last.left;
+        if (!vertical && !horizontal) return;
+        this._lastBodyScroll = { top, left };
+        this.core.emit("bodyScroll", {
+          scrollTopPx: top,
+          scrollLeftPx: left,
+          direction: vertical && horizontal ? "both" : vertical ? "vertical" : "horizontal",
+        });
       },
       onWindowUpdate: (scrollSrc) => {
         this._bodyWindowRenderer.update(false, scrollSrc);
@@ -1220,8 +1260,8 @@ export class GridRenderer {
     // An overlay message passed as undefined means "back to the default", as it does at creation.
     options = {
       ...options,
-      loadingMessage: options.loadingMessage ?? DEFAULT_LOADING_MESSAGE,
-      noRowsMessage: options.noRowsMessage ?? DEFAULT_NO_ROWS_MESSAGE,
+      loadingMessage: options.loadingMessage ?? this.core.getLocaleText("loading"),
+      noRowsMessage: options.noRowsMessage ?? this.core.getLocaleText("noRows"),
     };
     this.core.setRuntimeOptions(options);
 
@@ -1406,7 +1446,7 @@ export class GridRenderer {
         id: "quickFilter",
         chord: "mod+f",
         scope: "grid",
-        label: "Quick filter",
+        label: this.core.getLocaleText("shortcutQuickFilter"),
         when: () => this._quickFilterWidget != null,
         run: () => this._quickFilterWidget!.show(),
       },
@@ -1418,7 +1458,7 @@ export class GridRenderer {
         id: "sheets.next",
         chord: "mod+pagedown",
         scope: "grid",
-        label: "Next sheet",
+        label: this.core.getLocaleText("shortcutNextSheet"),
         when: () => this._sheetsRenderer?.isEnabled() === true,
         run: () => this._sheetsRenderer.activateAdjacent(1),
       },
@@ -1426,7 +1466,7 @@ export class GridRenderer {
         id: "sheets.previous",
         chord: "mod+pageup",
         scope: "grid",
-        label: "Previous sheet",
+        label: this.core.getLocaleText("shortcutPreviousSheet"),
         when: () => this._sheetsRenderer?.isEnabled() === true,
         run: () => this._sheetsRenderer.activateAdjacent(-1),
       },
@@ -1500,13 +1540,13 @@ export class GridRenderer {
     if (params.reason !== "navigate") return;
     const match = params.activeMatch;
     if (!match) {
-      this._announcer.announce("No matches");
+      this._announcer.announce(this.core.getLocaleText("findNoMatches"));
       return;
     }
     const viewIdx = this.core.getViewIndexForRowId(match.rowId);
     const colIdx = this._leafColumns.findIndex(col => col.instanceID === match.colInstanceId);
     if (colIdx >= 0) this._revealFindMatch(match.rowId, viewIdx, colIdx);
-    this._announcer.announce(`Match ${params.activeIndex} of ${params.matchCount}`);
+    this._announcer.announce(this.core.getLocaleText("findMatchOfTotal", { index: params.activeIndex, total: params.matchCount }));
   }
 
   /**
@@ -1703,8 +1743,8 @@ export class GridRenderer {
     if (this.core.isPivotUnconfigured()) return this.core.options.pivotEmptyMessage;
     // Otherwise tailor it: an active search/filter reads differently from a genuinely empty dataset.
     const quick = this.core.getQuickFilterText().trim();
-    if (quick !== "") return `No rows match "${quick}"`;
-    if (this.core.getFilterModel().items.length > 0) return "No rows match the current filters";
+    if (quick !== "") return this.core.getLocaleText("noRowsMatchSearch", { text: quick });
+    if (this.core.getFilterModel().items.length > 0) return this.core.getLocaleText("noRowsMatchFilters");
     return this.core.options.noRowsMessage;
   }
 
@@ -1716,6 +1756,8 @@ export class GridRenderer {
    * reconciles icons separately (e.g. the React wrapper merging live props). */
   setThemeVars(theme?: GridTheme) {
     this._themeRenderer.setTheme(theme);
+    // A theme's font and padding change how tall a wrapped autoHeaderHeight label is.
+    this._headerRenderer?.remeasureAutoHeight();
   }
 
   /** Apply a theme's CSS variables and its icon overrides. Icons explicitly set via
@@ -2112,6 +2154,17 @@ export class GridRenderer {
     // overlay, so it caps every placement — in a viewport too short to honor the request, docking
     // just below the overlay beats sliding the row underneath it. The browser clamps the far end.
     refs.body.scrollTop = Math.max(0, Math.min(rowTop - clearance, desired));
+  }
+
+  /**
+   * Set the body's scroll offsets (`api.scrollTo`). The vertical one is the body scroller's, the
+   * horizontal one the centre section's; the browser clamps each to its range, and the scroll
+   * listeners that follow a user scroll (header sync, row-window repaint) take it from there.
+   */
+  scrollTo(position: { topPx?: number; leftPx?: number }) {
+    const refs = this._bodyViewportRenderer.getRefs();
+    if (position.topPx != null) refs.body.scrollTop = Math.max(0, position.topPx);
+    if (position.leftPx != null) refs.centerSpacer.scrollLeft = Math.max(0, position.leftPx);
   }
 
   /**

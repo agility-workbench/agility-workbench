@@ -8,6 +8,7 @@ import {
   resolvePaginationControlsOptions,
 } from "../../interfaces/gridOptions";
 import type { MenuItem } from "../../interfaces/menuItem";
+import type { GridLocaleKey } from "../../interfaces/locale";
 import { isTrue } from "../../misc";
 import {
   ResponsiveBar,
@@ -53,10 +54,10 @@ function paginationIcon(): HTMLSpanElement {
 }
 
 /** The aggregate scopes offered, in order, by both the footer select and its overflow submenu. */
-const AGGREGATE_SCOPE_OPTIONS: ReadonlyArray<{ value: AggregateScope; label: string }> = [
-  { value: "none", label: "None" },
-  { value: "page", label: "Current page" },
-  { value: "all", label: "Entire dataset" },
+const AGGREGATE_SCOPE_OPTIONS: ReadonlyArray<{ value: AggregateScope; label: GridLocaleKey }> = [
+  { value: "none", label: "aggregateScopeNone" },
+  { value: "page", label: "aggregateScopeCurrentPage" },
+  { value: "all", label: "aggregateScopeEntireDataset" },
 ];
 
 /** Ids the footer's ladder addresses its controls by. */
@@ -103,7 +104,7 @@ export class PaginationRenderer {
   private lastPageOptionCount = -1;
 
   constructor(private params: PaginationRendererParams) {
-    this.controlsOptions = resolvePaginationControlsOptions(params.core.options.paginationControls);
+    this.controlsOptions = resolvePaginationControlsOptions(params.core.options.paginationControls, (key, values) => params.core.getLocaleText(key, values));
     this.paginator = createPaginationWrapper();
     this.tabsZone = document.createElement("div");
     this.tabsZone.className = "pte-footer-tabs";
@@ -295,8 +296,8 @@ export class PaginationRenderer {
     overflow.type = "button";
     overflow.className = "pte-pagination-btn pte-footer-overflow-button";
     overflow.setAttribute("aria-haspopup", "menu");
-    overflow.setAttribute("aria-label", "More footer controls");
-    overflow.title = "More footer controls";
+    overflow.setAttribute("aria-label", this.params.core.getLocaleText("moreFooterControls"));
+    overflow.title = this.params.core.getLocaleText("moreFooterControls");
     const icon = document.createElement("span");
     icon.className = "pte-footer-overflow-icon pte-menu-icon";
     icon.setAttribute("aria-hidden", "true");
@@ -324,7 +325,7 @@ export class PaginationRenderer {
     this.overflowButton.classList.toggle("pte-footer-overflow-active", active);
     this.overflowButton.setAttribute(
       "aria-label",
-      active ? "More footer controls (aggregation on)" : "More footer controls",
+      this.params.core.getLocaleText(active ? "moreFooterControlsAggregationOn" : "moreFooterControls"),
     );
   }
 
@@ -336,7 +337,7 @@ export class PaginationRenderer {
         const { pageSize, pageSizes } = this.params.core.getPaginationInfo();
         items.push({
           id: "footerOverflowPageSize",
-          label: "Rows per page",
+          label: this.params.core.getLocaleText("rowsPerPage"),
           subMenu: pageSizes.map(size => ({
             id: `footerOverflowPageSize-${size}`,
             label: String(size),
@@ -351,14 +352,14 @@ export class PaginationRenderer {
         const { whenUnavailable, unavailableMessage } = this.controlsOptions.aggregateScope;
         items.push({
           id: "footerOverflowAggregate",
-          label: "Aggregate",
+          label: this.params.core.getLocaleText("aggregate"),
           // An unavailable "Entire dataset" gets the same treatment as in the footer's own select:
           // greyed out with the explanation, or left out of the list.
           subMenu: AGGREGATE_SCOPE_OPTIONS
             .filter(option => !(lockedToPage && option.value === "all" && whenUnavailable === "hidden"))
             .map(option => ({
               id: `footerOverflowAggregate-${option.value}`,
-              label: option.label,
+              label: this.params.core.getLocaleText(option.label),
               left: option.value === scope ? "icon-check" : undefined,
               command: "footer.aggregateScope.set",
               payload: { scope: option.value },
@@ -370,7 +371,7 @@ export class PaginationRenderer {
       } else if (id === FOOTER_ITEMS.sheetAdd) {
         items.push({
           id: "footerOverflowAddSheet",
-          label: "New pivot sheet",
+          label: this.params.core.getLocaleText("newPivotSheet"),
           command: "footer.sheets.add",
         });
       }
@@ -382,7 +383,7 @@ export class PaginationRenderer {
       clientY: rect.top,
       items,
       position: "top-right",
-      ariaLabel: "More footer controls",
+      ariaLabel: this.params.core.getLocaleText("moreFooterControls"),
       // Commands rather than per-item handlers: MenuRenderer routes every click through one
       // callback, and only the column/body menu *services* honour `MenuItem.onClick`.
       onItemClick: item => this.executeOverflowCommand(item),
@@ -439,7 +440,7 @@ export class PaginationRenderer {
     this.pageSizeControl = sizeSection;
     const sizeLabel = document.createElement("span");
     sizeLabel.className = "pte-pagination-label";
-    sizeLabel.textContent = "Rows per page";
+    sizeLabel.textContent = core.getLocaleText("rowsPerPage");
     // The visible text beside each control is its name; point at it rather than duplicating the
     // string in an aria-label, so the two can never drift. Ids are prefixed with the grid instance
     // id because a page may hold several grids.
@@ -472,7 +473,7 @@ export class PaginationRenderer {
     wrapper.className = "pte-pagination-control pte-pagination-page-control";
     const pageLabel = document.createElement("span");
     pageLabel.className = "pte-pagination-label";
-    pageLabel.textContent = "Page";
+    pageLabel.textContent = core.getLocaleText("page");
     pageLabel.id = `${core.id}-pagination-page-label`;
 
     if (this.controlsOptions.showPageLabel) wrapper.appendChild(pageLabel);
@@ -503,20 +504,20 @@ export class PaginationRenderer {
 
   private buildNavigationButton(kind: "first" | "previous" | "next" | "last"): HTMLButtonElement {
     const definitions = {
-      first: { className: "first", label: "First page", page: () => 0 },
+      first: { className: "first", label: this.params.core.getLocaleText("firstPage"), page: () => 0 },
       previous: {
         className: "prev",
-        label: "Previous page",
+        label: this.params.core.getLocaleText("previousPage"),
         page: () => this.params.core.getPaginationInfo().pageIndex - 1,
       },
       next: {
         className: "next",
-        label: "Next page",
+        label: this.params.core.getLocaleText("nextPage"),
         page: () => this.params.core.getPaginationInfo().pageIndex + 1,
       },
       last: {
         className: "last",
-        label: "Last page",
+        label: this.params.core.getLocaleText("lastPage"),
         page: () => this.params.core.getPaginationInfo().totalPageCount - 1,
       },
     } as const;
@@ -540,7 +541,7 @@ export class PaginationRenderer {
 
     const aggLabel = document.createElement("span");
     aggLabel.className = "pte-pagination-label";
-    aggLabel.textContent = "Aggregate";
+    aggLabel.textContent = this.params.core.getLocaleText("aggregate");
     aggLabel.id = `${this.params.core.id}-aggregate-label`;
 
     this.aggregateScopeSelect = document.createElement("select");
@@ -550,7 +551,7 @@ export class PaginationRenderer {
     for (const optDef of AGGREGATE_SCOPE_OPTIONS) {
       const opt = document.createElement("option");
       opt.value = optDef.value;
-      opt.textContent = optDef.label;
+      opt.textContent = this.params.core.getLocaleText(optDef.label);
       if (optDef.value === "all") this.aggregateScopeAllOption = opt;
       this.aggregateScopeSelect.appendChild(opt);
     }
@@ -562,8 +563,8 @@ export class PaginationRenderer {
     this.aggregateClearBtn = document.createElement("button");
     this.aggregateClearBtn.type = "button";
     this.aggregateClearBtn.className = "pte-pagination-btn pte-aggregate-clear";
-    this.aggregateClearBtn.title = "Hide aggregate row";
-    this.aggregateClearBtn.setAttribute("aria-label", "Hide aggregate row");
+    this.aggregateClearBtn.title = this.params.core.getLocaleText("hideAggregateRow");
+    this.aggregateClearBtn.setAttribute("aria-label", this.params.core.getLocaleText("hideAggregateRow"));
     this.aggregateClearBtn.textContent = "x";
     this.aggregateClearBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -582,19 +583,19 @@ export class PaginationRenderer {
     const totalPages = Math.max(totalPageCount, 1);
     // A provisional total (server hasn't reported it and the end hasn't been reached) renders with
     // a "+" suffix — "3 of 12+" — so a growing page count reads as discovery, not as a bug.
-    const totalLabel = totalRowCountKnown ? String(totalPages) : `${totalPages}+`;
+    const totalLabel = totalRowCountKnown ? String(totalPages) : this.params.core.getLocaleText("pageCountUnknown", { count: totalPages });
     if (this.pageSelect.options.length !== totalPages) {
       this.pageSelect.innerHTML = "";
       for (let i = 0; i < totalPages; i++) {
         const option = document.createElement("option");
         option.value = String(i);
-        option.textContent = `${i + 1} of ${totalLabel}`;
+        option.textContent = this.params.core.getLocaleText("pageOfTotalOption", { page: i + 1, total: totalLabel });
         this.pageSelect.appendChild(option);
       }
     } else {
       for (let i = 0; i < totalPages; i++) {
         const option = this.pageSelect.options[i];
-        const desiredText = `${i + 1} of ${totalLabel}`;
+        const desiredText = this.params.core.getLocaleText("pageOfTotalOption", { page: i + 1, total: totalLabel });
         if (option.textContent !== desiredText) {
           option.textContent = desiredText;
         }
@@ -607,8 +608,8 @@ export class PaginationRenderer {
       : this.params.core.options.paginationUnknownTotalTooltip;
     if (this.pageSelect.title !== tooltip) this.pageSelect.title = tooltip;
     const ariaLabel = totalRowCountKnown
-      ? `Page ${Math.min(pageIndex, totalPages - 1) + 1} of ${totalPages}`
-      : `Page ${Math.min(pageIndex, totalPages - 1) + 1} of at least ${totalPages}. ${tooltip}`;
+      ? this.params.core.getLocaleText("pageOfTotal", { page: Math.min(pageIndex, totalPages - 1) + 1, total: totalPages })
+      : this.params.core.getLocaleText("pageOfAtLeastTotalWithHint", { page: Math.min(pageIndex, totalPages - 1) + 1, total: totalPages, hint: tooltip });
     this.pageSelect.setAttribute("aria-label", ariaLabel);
   }
 
@@ -625,8 +626,8 @@ export class PaginationRenderer {
     this.pageButtonsContainer.setAttribute(
       "aria-label",
       totalRowCountKnown
-        ? `Page ${currentPage + 1} of ${totalPages}`
-        : `Page ${currentPage + 1} of at least ${totalPages}. ${tooltip}`,
+        ? this.params.core.getLocaleText("pageOfTotal", { page: currentPage + 1, total: totalPages })
+        : this.params.core.getLocaleText("pageOfAtLeastTotalWithHint", { page: currentPage + 1, total: totalPages, hint: tooltip }),
     );
 
     for (const page of this.visiblePageButtons(currentPage, totalPages)) {
@@ -645,8 +646,8 @@ export class PaginationRenderer {
       button.setAttribute(
         "aria-label",
         totalRowCountKnown
-          ? `Page ${page + 1} of ${totalPages}`
-          : `Page ${page + 1} of at least ${totalPages}`,
+          ? this.params.core.getLocaleText("pageOfTotal", { page: page + 1, total: totalPages })
+          : this.params.core.getLocaleText("pageOfAtLeastTotal", { page: page + 1, total: totalPages }),
       );
       if (page === currentPage) {
         button.classList.add("pte-pagination-page-btn-current");
@@ -742,7 +743,7 @@ export class PaginationRenderer {
   }
 
   setPaginationControls(options?: PaginationControlsOptions) {
-    this.controlsOptions = resolvePaginationControlsOptions(options);
+    this.controlsOptions = resolvePaginationControlsOptions(options, (key, values) => this.params.core.getLocaleText(key, values));
     this.buildControls();
   }
 

@@ -7,6 +7,7 @@ import { GridViewColumnGroupState } from "../interfaces/gridView";
 import { ColumnState } from "../interfaces/iGridCore";
 import { InternalGridOptions } from "../interfaces/gridOptions";
 import { isNullOrUndefined } from "../misc";
+import { resolveLocaleText } from "../interfaces/locale";
 import { ColumnMove } from "./columnMove";
 
 interface BaselineWidthDef {
@@ -170,7 +171,7 @@ export class ColumnModel implements IColumnModel {
       // and an instance left behind in the lookups reads to them as a column that still exists, so
       // a role on a column the new defs dropped would survive pointing at a dead instance.
       this.unregisterPivotStashLookups();
-      this.pivotSourceStash = built;
+      this.pivotSourceStash = this.applyLockOrder(built);
       this.registerPivotStashLookups();
       return;
     }
@@ -252,7 +253,10 @@ export class ColumnModel implements IColumnModel {
   }
 
   private updateColumns(cols: Column[]) {
-    this.columns = this.withInternalColumns(cols);
+    // Every structural change funnels through here, so this is where `lockPosition` is enforced:
+    // drag, the column panel, the API, applyColumnState, saved views and setColumnDefs all get
+    // locked columns put back at their edge before the sections are bucketed.
+    this.columns = this.applyLockOrder(this.withInternalColumns(cols));
     this.columns.forEach(c => c.updatePropsByChildren());
     // Only the row-number gutter owns the permanently-leading section. The checkbox utility column
     // follows its live pinned state so its header menu can move it like users expect.
@@ -298,6 +302,37 @@ export class ColumnModel implements IColumnModel {
         this.columnsByKey.set(col.key, col);
       }
     }, this.pivotSourceStash);
+  }
+
+  /**
+   * `ColDef.lockPosition`, applied: a stable partition of each sibling list (top level and every
+   * group's children) into left-locked, unlocked, right-locked. Sections are filtered out of the
+   * top-level list in order, so this holds a locked column at its edge of whichever section it is
+   * pinned to. The row-number and selection-checkbox columns rank before everything: they lead
+   * their section whatever is locked. Children lists are replaced, never mutated in place, since
+   * split group copies share them.
+   */
+  private applyLockOrder(cols: Column[]): Column[] {
+    const rank = (col: Column) => col.isLeadingUtilityColumn() ? -1
+      : col.lockPosition === "left" ? 0
+        : col.lockPosition === "right" ? 2
+          : 1;
+    const sortLevel = (list: Column[]): Column[] => {
+      for (const col of list) {
+        if (col.children.length > 1) col.children = sortLevel(col.children);
+      }
+      if (!list.some(col => col.lockPosition != null)) return list;
+      return list
+        .map((col, index) => ({ col, index, rank: rank(col) }))
+        .sort((a, b) => a.rank - b.rank || a.index - b.index)
+        .map(entry => entry.col);
+    };
+    return sortLevel(cols);
+  }
+
+  /** Whether a column is held in place by its own `lockPosition`. */
+  isPositionLocked(colId: string): boolean {
+    return this.resolve(colId)?.lockPosition != null;
   }
 
   private getSectionArray(section: ColumnSection): Column[] {
@@ -453,6 +488,15 @@ export class ColumnModel implements IColumnModel {
 
   getColumns(): Column[] {
     return this.columns;
+  }
+
+  getSourceColumns(): Column[] {
+    // The stash is the user's tree while pivoted; otherwise the section lists, whose concatenation
+    // is display order (the leading section holds only the utility columns).
+    const roots = this.pivotDisplayActive
+      ? this.pivotSourceStash
+      : [...this.leftColumns, ...this.centerColumns, ...this.rightColumns];
+    return roots.filter(col => !col.isInternal());
   }
 
   getLeaves(): Column[] {
@@ -666,6 +710,7 @@ export class ColumnModel implements IColumnModel {
     });
     return new Column({
       ...TREE_COLUMN_DEF,
+      label: resolveLocaleText(this.options, "hierarchyColumn"),
       ...clientDef,
       valueGetter,
       // These capabilities have no meaningful operation in tree mode.
@@ -1016,6 +1061,7 @@ export class ColumnModel implements IColumnModel {
   private buildAutoGroupColDef(): ColDef {
     return {
       ...AUTO_GROUP_COLUMN_DEF,
+      label: resolveLocaleText(this.options, "groupColumn"),
       ...this.options.groupColumnDef,
       colId: AUTO_GROUP_COL_ID,
       key: AUTO_GROUP_COL_ID,
@@ -1475,7 +1521,7 @@ export class ColumnModel implements IColumnModel {
       }
     }
 
-    const reordered = this.reorderTreeByTargetOrder(topLevel, targetOrder);
+    const reordered = this.applyLockOrder(this.reorderTreeByTargetOrder(topLevel, targetOrder));
     if (pivoted) {
       this.pivotSourceStash = reordered;
       this.registerPivotStashLookups();
@@ -1614,14 +1660,72 @@ export class ColumnModel implements IColumnModel {
     return resizedLeafIds;
   }
 
-  moveColumnTo(colId: string, targetIndex: number, section: ColumnSection): boolean {
+  /**
+   * Move a column to `targetIndex` of `section`'s visible leaves (the drag/column-panel primitive).
+   * A column with `lockPosition` refuses (returns false) unless `opts.allowLocked` — pinning moves
+   * a locked column between sections, where the lock order puts it back at its edge.
+   */
+  moveColumnTo(colId: string, targetIndex: number, section: ColumnSection, opts?: { allowLocked?: boolean }): boolean {
     const col = this.resolve(colId);
     if (!col || col.isLeadingUtilityColumn()) return false;
+    if (col.lockPosition != null && !opts?.allowLocked) return false;
     const moveResult = new ColumnMove(this).applyColumnReorder(col, targetIndex, section);
     if (moveResult.length === 0) return false;
     this.updateColumns(moveResult);
     this.updateParentColumnWidthsForAll();
     return true;
+  }
+
+  /**
+   * `api.moveColumns`: place the columns, in the order given, so they start at `toIndex` of the
+   * order `getColumnState()` returns (hidden columns counted, internal columns not). A column
+   * stays in its own section: the index is clamped to that section's range, so moving across
+   * pinned sections takes `setColumnPinned`. Skipped: unknown ids, internal columns, columns with
+   * their own `lockPosition`, and `movable: false` columns. Locked columns keep their edge, so an
+   * index among them lands next to them. Each column is inserted before the same anchor (the
+   * first other column at the target position), which keeps the given order; a column inside a
+   * group leaves it the way a header drag does. Returns the instanceIDs of the columns moved.
+   */
+  moveColumnsToIndex(colIds: readonly string[], toIndex: number): string[] {
+    const targets: Column[] = [];
+    for (const id of colIds) {
+      const col = this.resolve(id) ?? this.getAutoGroupColumnByColId(id);
+      if (!col || col.isLeadingUtilityColumn() || col.isPivotResultColumn()) continue;
+      if (col.lockPosition != null || !col.movable) continue;
+      if (!targets.includes(col)) targets.push(col);
+    }
+    // While pivoted the displayed columns are generated; the user's own are stashed and not laid out.
+    if (targets.length === 0 || !Number.isFinite(toIndex) || this.pivotDisplayActive) return [];
+    const movedLeafIds = new Set(targets.flatMap(col => col.getLeaves().map(leaf => leaf.colId)));
+    const remaining = this.getColumnState().filter(entry => !movedLeafIds.has(entry.colId));
+    const sectionOf = (col: Column): ColumnSection => {
+      const top = this.getAncestors(col.instanceID)[0] ?? col;
+      return top.pinned === "left" ? "left" : top.pinned === "right" ? "right" : "center";
+    };
+    const index = Math.max(0, Math.floor(toIndex));
+    const moved: string[] = [];
+    for (const target of targets) {
+      // A previous move can have replaced the instance (a move re-creates the node it relocates).
+      const col = this.getById(target.instanceID);
+      if (!col) continue;
+      const section = sectionOf(col);
+      const inSection = remaining
+        .map((entry, i) => ({ col: this.getByColId(entry.colId), i }))
+        .filter(entry => entry.col && sectionOf(entry.col) === section);
+      let anchor: Column | null = null;
+      if (inSection.length > 0) {
+        const start = inSection[0].i;
+        const end = inSection[inSection.length - 1].i + 1;
+        const position = Math.min(Math.max(index, start), end);
+        anchor = position < end ? this.getByColId(remaining[position].colId) ?? null : null;
+      }
+      const result = new ColumnMove(this).applyColumnReorderBefore(col, anchor, section);
+      if (result.length === 0) continue;
+      this.updateColumns(result);
+      this.updateParentColumnWidthsForAll();
+      moved.push(col.instanceID);
+    }
+    return moved;
   }
 
   setPinned(colId: string, pin: "left" | "right" | null): boolean {
@@ -1653,7 +1757,7 @@ export class ColumnModel implements IColumnModel {
       }
     }
 
-    return this.moveColumnTo(colId, targetIdx, pin || "center");
+    return this.moveColumnTo(colId, targetIdx, pin || "center", { allowLocked: true });
   }
 
   setPinneds(colIds: string[], pin: "left" | "right" | null): string[] {

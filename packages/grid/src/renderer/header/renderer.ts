@@ -13,6 +13,7 @@ import {
   createHeaderComponentRuntime,
 } from "./headerComponent";
 import { findHeaderCell } from "./headerCellLookup";
+import { HeaderAutoHeight } from "./headerAutoHeight";
 import { createHeaderWrapper, HeaderWrapperElements } from "./wrapper";
 
 interface HeaderRendererParams {
@@ -25,6 +26,9 @@ interface HeaderRendererParams {
   getContainerEl: () => HTMLElement;
   openColumnMenu: (colID: string, anchorEl: HTMLElement) => void;
   openColumnFilter: (colID: string, anchorEl: HTMLElement) => void;
+  /** The header's total height changed because measured content (`autoHeaderHeight`) grew or
+   * shrank a level: whatever sizes itself from the header (body budget, row pool) re-lays out. */
+  onHeightChanged?: () => void;
 }
 
 /** A mounted custom header component plus which slot (1 = content, 2 = whole cell) it filled. */
@@ -38,6 +42,10 @@ export class HeaderRenderer {
   private activeHeaderEl: HTMLElement | null = null;
   /** The select-all checkbox visual in the checkbox column's header, when rendered. */
   private selectAllCheckboxEl: HTMLElement | null = null;
+  /** `autoHeaderHeight` measurement plus the built cells a measured height change rewrites. */
+  private readonly autoHeight = new HeaderAutoHeight(() => this.remeasureAutoHeight());
+  /** The header height last written to the wrapper (null before the first build). */
+  private appliedHeaderHeight: number | null = null;
 
   constructor(private params: HeaderRendererParams) {
     this.elements = createHeaderWrapper();
@@ -56,6 +64,7 @@ export class HeaderRenderer {
   destroy(): void {
     for (const { runtime } of this.components.values()) runtime.destroy();
     this.components.clear();
+    this.autoHeight.destroy();
   }
 
   buildDOM(reason: string) {
@@ -72,14 +81,8 @@ export class HeaderRenderer {
     const bodyFrame = this.params.getBodyFrame();
     const levelCount = core.getColumnModel().maxHeaderDepth;
     const geometry = this.getGeometry();
-    const headerHeight = geometry.total;
-    this.params.root.style.setProperty("--pte-rendered-header-height", `${headerHeight}px`);
-    for (const el of [headerWrapper, leadingHeader, leftHeader, centerHeader, rightHeader]) {
-      el.style.height = `${headerHeight}px`;
-      el.style.minHeight = `${headerHeight}px`;
-    }
-    bodyFrame.style.height = `calc(100% - ${headerHeight}px)`;
-    bodyFrame.style.maxHeight = `calc(100% - ${headerHeight}px)`;
+    this.applyFrameHeights(geometry.total);
+    this.autoHeight.reset();
     // Tear down any custom header components from the previous build before wiping their DOM, so
     // class components can release listeners/state. buildHeaderCell repopulates this map.
     for (const { runtime } of this.components.values()) runtime.destroy();
@@ -110,6 +113,10 @@ export class HeaderRenderer {
       }
     }
     this.applyHeaderAria(leadingHeader, leftHeader, centerHeader, rightHeader);
+    // autoHeaderHeight: one measuring pass over the finished cells (widths applied), then the
+    // grown geometry written everywhere at once.
+    this.remeasureAutoHeight();
+    this.autoHeight.observe();
     const containerEl = this.params.getContainerEl();
     const headerProbe = getComputedStyle(centerHeader.querySelector(".pte-hcell") || containerEl);
     const cellProbe = getComputedStyle(bodyFrame.querySelector(".pte-cell") || containerEl);
@@ -145,10 +152,10 @@ export class HeaderRenderer {
           // columnheader with no accessible name (axe: empty-table-header). Name it here rather
           // than painting text into the cell.
           if (hcell.classList.contains("pte-hcell-row-number")) {
-            hcell.setAttribute("aria-label", "Row number");
+            hcell.setAttribute("aria-label", this.params.core.getLocaleText("rowNumber"));
           }
           if (hcell.classList.contains("pte-hcell-checkbox")) {
-            hcell.setAttribute("aria-label", "Select all rows");
+            hcell.setAttribute("aria-label", this.params.core.getLocaleText("selectAllRows"));
           }
           ownedIds.push(hcell.id);
         } else {
@@ -166,7 +173,48 @@ export class HeaderRenderer {
    */
   getGeometry(): HeaderGeometry {
     const { options } = this.params.core;
-    return headerGeometry(this.params.core.getColumnModel().maxHeaderDepth, options);
+    const levelCount = this.params.core.getColumnModel().maxHeaderDepth;
+    return headerGeometry(levelCount, options, this.autoHeight.getLevels(levelCount));
+  }
+
+  /**
+   * Re-measure the `autoHeaderHeight` cells and, when the measured level heights changed, write
+   * the new geometry to the wrapper, the sections, the body frame, every cell and
+   * `--pte-rendered-header-height` together (no DOM rebuild). Called once per header build and by
+   * the renderer when an input changes without one (final width change, theme swap); the
+   * ResizeObserver and font-loading hooks call it too. Cheap when nothing is auto-sized.
+   */
+  remeasureAutoHeight(): void {
+    const before = this.appliedHeaderHeight;
+    if (!this.autoHeight.measure(this.getConfiguredGeometry())) return;
+    const geometry = this.getGeometry();
+    this.applyFrameHeights(geometry.total);
+    for (const cell of this.autoHeight.getCells()) {
+      const heights = geometry.cellHeights(cell.depth, cell.levelsBelow);
+      cell.header.style.height = `${heights.cell}px`;
+      cell.container.style.height = `${heights.container}px`;
+    }
+    // The body's height budget, the scrollbar strip and the row pool all follow the header.
+    if (geometry.total !== before) this.params.onHeightChanged?.();
+  }
+
+  /** The geometry from the header-height options alone, before any measured growth. */
+  private getConfiguredGeometry(): HeaderGeometry {
+    return headerGeometry(this.params.core.getColumnModel().maxHeaderDepth, this.params.core.options);
+  }
+
+  /** The header's outer heights: wrapper, sections, body frame and the rendered-height variable. */
+  private applyFrameHeights(headerHeight: number): void {
+    const { wrapper, leading, left, center, right } = this.elements;
+    this.params.root.style.setProperty("--pte-rendered-header-height", `${headerHeight}px`);
+    for (const el of [wrapper, leading, left, center, right]) {
+      el.style.height = `${headerHeight}px`;
+      el.style.minHeight = `${headerHeight}px`;
+    }
+    const bodyFrame = this.params.getBodyFrame();
+    bodyFrame.style.height = `calc(100% - ${headerHeight}px)`;
+    bodyFrame.style.maxHeight = `calc(100% - ${headerHeight}px)`;
+    this.appliedHeaderHeight = headerHeight;
   }
 
   /** `levelsBelow`: how many header levels this cell spans, from its own level to the leaf level. */
@@ -201,6 +249,19 @@ export class HeaderRenderer {
     const headerContainer = document.createElement("div");
     headerContainer.className = "pte-hcell-container";
     headerContainer.style.height = `${heights.container}px`;
+    if (col.wrapHeaderText) {
+      headerContainer.classList.add("pte-hcell-wrap-text");
+      // A group's box is otherwise as wide as its unwrapped label until the width pass runs, and
+      // the build's measurement would read one long line. Same value the width pass writes.
+      if (col.children.length > 0) header.style.width = `${col.computedWidth}px`;
+    }
+    this.autoHeight.track({
+      header,
+      container: headerContainer,
+      depth: col.depth || 1,
+      levelsBelow,
+      auto: col.autoHeaderHeight && !isRowNumberColumn,
+    });
     if (col.isComputableType()) {
       headerContainer.classList.add("pte-hcell-computable");
     }
@@ -452,7 +513,7 @@ export class HeaderRenderer {
     box.classList.toggle("selected", all);
     box.classList.toggle("pte-checkbox-indeterminate", some);
     const hcell = box.closest(".pte-hcell");
-    hcell?.setAttribute("aria-label", all ? "Deselect all rows" : "Select all rows");
+    hcell?.setAttribute("aria-label", core.getLocaleText(all ? "deselectAllRows" : "selectAllRows"));
   }
 
   refreshSortIndicators() {

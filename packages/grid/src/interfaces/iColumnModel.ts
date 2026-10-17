@@ -15,6 +15,13 @@ export interface IColumnModel {
   getColumnState(): ColumnState[];
   applyColumnState(state: ColumnState[], opts?: { defaultState?: Partial<ColumnState> }): void;
   getColumns(): Column[];
+  /**
+   * The application's column tree — top-level columns in display order (left section, centre,
+   * right), groups carrying their children — with the internal columns (row numbers, selection
+   * checkbox, auto-group, generated pivot columns) left out. While pivot display is active these
+   * are the stashed source columns, as `getColumnState` describes them.
+   */
+  getSourceColumns(): Column[];
   getLeaves(): Column[];
   getLeadingColumns(): Column[];
   getLeftColumns(): Column[];

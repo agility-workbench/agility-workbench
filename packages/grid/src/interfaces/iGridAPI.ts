@@ -34,6 +34,8 @@ import { GridHistoryState } from "../core/historyModel";
 import type { SortDir } from "./sort";
 import type { KeyboardShortcutInfo } from "../renderer/interaction/keyboardRouter";
 import type { GridShortcut } from "../renderer/interaction/shortcutPolicy";
+import type { GridLocaleKey } from "./locale";
+import type { Column } from "../column/column";
 
 export type NavDir = "up" | "down" | "left" | "right";
 
@@ -130,6 +132,32 @@ export interface ColumnWidthItem {
   widthPx: number;
 }
 
+/**
+ * {@link IGridAPI.scrollTo}'s target: absolute body scroll offsets in CSS pixels. An omitted axis
+ * keeps its current offset.
+ */
+export interface GridScrollPosition {
+  /** The body's vertical offset (0 = first row at the top). */
+  topPx?: number;
+  /** The centre section's horizontal offset (pinned sections never scroll). */
+  leftPx?: number;
+}
+
+/** The parameters of {@link IGridAPI.addSparklineColumn}. */
+export interface AddSparklineColumnParams {
+  /** The leaf columns whose values make each row's series, in point order. Groups are skipped. */
+  colIds: string[];
+  sparklineType: "line" | "bar" | "area";
+  /**
+   * The column whose `valueFormatter` formats the tooltip's point values, ahead of the other
+   * selected columns' (the column menu passes the column it was opened on). Defaults to the first
+   * of `colIds`.
+   */
+  targetColId?: string;
+  /** The new column's colId; a fresh `sparkline_<uuid>` when omitted. */
+  colId?: string;
+}
+
 export interface GridApiConfigController {
   setToolbarOptions: (options: GridOptions["toolbar"]) => void;
   setQuickFilterOptions: (options: GridOptions["quickFilter"]) => void;
@@ -166,9 +194,51 @@ export interface GridApiShortcutController {
   getShortcuts: () => readonly KeyboardShortcutInfo[];
 }
 
-export interface IGridAPI {
+/**
+ * The grid's public API. `TData` is the row type (default `any`): it types the rows and row nodes
+ * the API takes and returns (`setRowData`, `getSelectedRows`, `getRowNode`, `forEachNode*`,
+ * `applyTransaction`, …), the column definitions (`ColDef<TData>`), `getGridOption`,
+ * `updateGridOptions`, and the click payloads `on` hands its handlers. `createGrid<TData>` and the
+ * framework bindings return / expose an `IGridAPI<TData>`.
+ */
+export interface IGridAPI<TData = any> {
   /** The underlying grid core (state + dispatch + event emission). */
   getCore(): IGridCore;
+
+  /**
+   * One of the grid's own user-visible strings, translated the way the grid translates it: the
+   * `getLocaleText` option, else the `localeText` entry, else the English default
+   * (`DEFAULT_LOCALE_TEXT`), with `{placeholder}`s filled from `variableValues`. For custom header
+   * components, cell renderers and menu items that should read like the grid around them:
+   *
+   * ```ts
+   * api.getLocaleText("sortAscending");                     // "Sort Ascending"
+   * api.getLocaleText("pageOfTotal", { page: 2, total: 9 }); // "Page 2 of 9"
+   * ```
+   *
+   * For a `…One` / `…Other` pair, pick the key from the count yourself and pass `{ count }`.
+   */
+  getLocaleText(key: GridLocaleKey, variableValues?: Record<string, string | number>): string;
+
+  /**
+   * Show the loading overlay (spinner + `loadingMessage`) until {@link hideOverlay} — the
+   * imperative form of the wrappers' `loading` input. The no-rows overlay is held back meanwhile.
+   */
+  showLoadingOverlay(): void;
+
+  /**
+   * Show the no-rows overlay now, whatever the row count, with the message the grid would choose
+   * (`noRowsMessage`, or the filtered-out wording while a filter or search is active). Hides the
+   * loading overlay. The next data change re-decides it: the overlay stays only while the view is
+   * really empty.
+   */
+  showNoRowsOverlay(): void;
+
+  /**
+   * Hide the loading overlay, and the no-rows overlay unless the view is actually empty (an empty
+   * view always shows it).
+   */
+  hideOverlay(): void;
 
   /**
    * Reconfigure a mounted grid in place. Only the properties present in `options` change; a property
@@ -186,7 +256,30 @@ export interface IGridAPI {
    * Options that seed structure (`rowHeight`, `rowNumbers`, `rowModelType`, row identity) are not
    * updatable — see {@link UpdatableGridOptions}. Unknown keys are ignored with a warning.
    */
-  updateGridOptions(options: UpdatableGridOptions): void;
+  updateGridOptions(options: UpdatableGridOptions<TData>): void;
+
+  /**
+   * The current value of one grid option: the value last supplied for it — to
+   * {@link updateGridOptions} (which is what a wrapper prop change goes through), else at
+   * creation — returned as given, the same reference, not copied or normalized (an object
+   * `rowSelection` reads back as that object).
+   *
+   * No defaults are filled in: an option that was never set, or was last set to `undefined` (the
+   * reset), reads `undefined`, and the grid applies the default its documentation states. So
+   * `getGridOption("rowHeight")` is `undefined` unless the app chose a row height.
+   *
+   * The exceptions are `pivotMode` and `pivotColumns`, which seed model state the grid owns
+   * afterwards (the user toggles pivot mode from the panel): they read the live state, as
+   * {@link getPivotMode} and {@link getPivotColumns} do. Other state that starts from an option
+   * and then moves on its own (the page size, a sort seeded by `initialSort`) has its own getter
+   * and is not reflected here.
+   *
+   * ```ts
+   * api.updateGridOptions({ zebraRows: true });
+   * api.getGridOption("zebraRows"); // true
+   * ```
+   */
+  getGridOption<K extends keyof GridOptions>(key: K): GridOptions<TData>[K];
 
   /**
    * Install (or, with `null`, remove) the column-menu adapter on a mounted grid — the deferred form
@@ -239,11 +332,22 @@ export interface IGridAPI {
    */
   getKeyboardShortcuts(): readonly KeyboardShortcutInfo[];
 
-  /** Dispatch an action to the core. */
+  /**
+   * Dispatch an action to the core — the low-level door the typed methods go through. Prefer the
+   * typed methods: every action an application has a use for has one (`setColumnWidth` for
+   * `columnResize`, `moveColumns` for `columnMove`, `setGroupExpanded` for `groupToggleExpand`,
+   * `applyTransaction` for `rowTransactionApply`, `addSparklineColumn`, …).
+   *
+   * The rest are renderer-internal and have no typed form on purpose: `init`, the header's click
+   * and keyboard handling (`headerAction`, `headerFocusSet`, `headerNavigate`), tree keyboard
+   * navigation (`treeNavigate`) and font measurement (`themeFontSet`). `scrollSet`,
+   * `viewportResize`, `rowHeightSet`, `overscanSet` and `destroy` are not handled by the core at
+   * all — dispatching one does nothing; use {@link scrollTo} and {@link destroy}.
+   */
   dispatch(action: GridAction): void;
 
   /** Subscribe to core events. */
-  on<E extends GridEventName>(event: E, handler: (ev: GridEventMap[E]) => void): Unsubscribe;
+  on<E extends GridEventName>(event: E, handler: (ev: GridEventMap<TData>[E]) => void): Unsubscribe;
 
   /**
    * The current column state: one entry per non-internal leaf in display order, with its width,
@@ -325,6 +429,70 @@ export interface IGridAPI {
    */
   sizeColumnsToFit(): void;
 
+  /* ----- Column pinning, visibility and order ----- */
+  /**
+   * Pin one or more columns to the left or right section, or unpin them with `null` — what the
+   * column menu's Pin items do. A group pins as a whole. Columns that cannot be pinned (the
+   * row-number column, generated pivot columns, the selection-checkbox column unless
+   * `rowSelectionCheckboxColumnPinnable`) are skipped. A column with `lockPosition` can be pinned
+   * and lands at its edge of the new section. Emits `columnsChanged` with `reason: "pin"` and
+   * `source: "api"`; nothing when no column resolves.
+   */
+  setColumnPinned(colIds: string | string[], pinned: "left" | "right" | null): void;
+  /**
+   * Show or hide columns — what the column menu's Hide item and the column panel's checkboxes do.
+   * Hiding skips `hideable: false` columns (showing one always works) and the row-number /
+   * selection-checkbox columns. Emits `columnsChanged` with `reason: "visibility"` and
+   * `source: "api"`; nothing when no column is left to change.
+   */
+  setColumnsVisible(colIds: string[], visible: boolean): void;
+  /** {@link setColumnsVisible} for one column. */
+  setColumnVisible(colId: string, visible: boolean): void;
+  /**
+   * Move a column so it sits at `toIndex` of the order {@link getColumnState} returns — every
+   * non-internal leaf, hidden ones included, left section then centre then right. A shorthand for
+   * {@link moveColumns} with one column; the rules there apply.
+   */
+  moveColumn(colId: string, toIndex: number): void;
+  /**
+   * Move columns, in the order given, so they start at `toIndex` of the order
+   * {@link getColumnState} returns (every non-internal leaf, hidden ones included: left section,
+   * then centre, then right) — the API form of a header drag. Rules:
+   * - A column stays in its section: `toIndex` is clamped to that section's range (an index past
+   *   the centre section's end puts a centre column last in the centre). Pin with
+   *   {@link setColumnPinned} to move between sections.
+   * - Columns with their own `lockPosition`, `movable: false` columns, the row-number and selection
+   *   columns and generated pivot columns are skipped. Locked columns keep their edge, so an index
+   *   among them lands next to them.
+   * - A column inside a group leaves the group (it is split, as a drag does) when the target is
+   *   outside it; passing the group's colId moves the whole group.
+   * - No-op while pivot mode displays generated columns.
+   *
+   * Emits one `columnsChanged` with `reason: "order"` and `source: "api"`; nothing when no column
+   * moved.
+   *
+   * ```ts
+   * api.moveColumns(["price", "qty"], 0); // first two centre columns (when nothing is pinned left)
+   * ```
+   */
+  moveColumns(colIds: string[], toIndex: number): void;
+
+  /**
+   * Add a sparkline column — what the column menu's "Add sparkline" item does: one centre column,
+   * appended last, whose cell draws each row's values of `colIds` as a line, bar or area chart (a
+   * group row draws the columns' group values). The column is transient: it survives moves, hides
+   * and resizes, but the next {@link setColumnDefs} that does not list it drops it.
+   *
+   * Returns the new column's colId, or `null` when none of `colIds` names a leaf column (nothing is
+   * added). A `colId` that is already taken returns that existing column without adding one. Emits
+   * `columnsChanged` with `reason: "add"` and `source: "api"`.
+   *
+   * ```ts
+   * api.addSparklineColumn({ colIds: ["q1", "q2", "q3", "q4"], sparklineType: "line" });
+   * ```
+   */
+  addSparklineColumn(params: AddSparklineColumnParams): string | null;
+
   /**
    * Every column group's expander state (open or closed) by the group's colId — nested groups
    * included, in header order. While pivoted this describes the user's own groups, as
@@ -345,6 +513,22 @@ export interface IGridAPI {
   getColumnModel(): IColumnModel;
 
   /**
+   * The application's column with this id — tolerant like every column-id input here (instance id,
+   * then public colId, then `key`) — or `undefined` for an unknown id and for the grid's internal
+   * columns (row numbers, selection checkbox, auto-group, generated pivot columns). While pivoted
+   * it finds the source columns, as {@link getColumnState} describes them. The returned `Column`
+   * is the grid's live object: read it, change columns through the API.
+   */
+  getColumn(colId: string): Column | undefined;
+  /**
+   * Every leaf column of the application's, hidden ones included, in display order (left section,
+   * centre, right) — the columns {@link getColumnState} describes, in the same order. Internal
+   * columns are left out (see {@link getColumn}); while pivoted these are the source columns. A
+   * new array each call; the `Column`s are the grid's live objects.
+   */
+  getColumns(): Column[];
+
+  /**
    * Set the column definitions — the imperative form of `updateGridOptions({ columnDefs })`, and
    * equivalent to it for a non-empty array: both apply the defs and claim caller ownership of the
    * schema, so a server-sent schema (an SSRM response's `columns`) no longer replaces them.
@@ -356,10 +540,38 @@ export interface IGridAPI {
    * can *release* ownership: `updateGridOptions({ columnDefs: undefined })` hands the schema back,
    * letting the next server response supply the columns again.
    */
-  setColumnDefs(defs: ColDef[]): void;
+  setColumnDefs(defs: ColDef<TData>[]): void;
+
+  /**
+   * The column definitions as the grid holds them now, round-trippable:
+   * `api.setColumnDefs(api.getColumnDefs())` changes nothing, and `createGrid(el, { columnDefs:
+   * api.getColumnDefs() })` rebuilds the same columns.
+   *
+   * A fresh tree in the current display order and structure (groups with their `children`; a group
+   * a move split appears once per piece). Each entry is the column's own definition as last applied
+   * — before `defaultColDef` is merged in; functions and objects in it are the same references — with
+   * the current state written over it:
+   * - `colId`: always set (the generated one for a definition that had neither `colId` nor `key`).
+   * - `width`: a leaf's current width in pixels. A group keeps its definition's.
+   * - `pinned`: a top-level column's current section, `"left"` / `"right"`; removed when unpinned.
+   * - `hidden`: `true` when hidden; removed when shown (`false` when `defaultColDef` hides).
+   * - `sort` / `sortIndex`: the direction and the index in {@link getSortModel}; removed when unsorted.
+   * - `aggFunc`: for a column in the aggregate model, its first assignment's function; otherwise
+   *   the definition's own (which is also the column's default function) is kept.
+   * - `openByDefault`: a group with an expander's current open state.
+   *
+   * Not included: the internal columns (row numbers, selection checkbox, auto-group, generated
+   * pivot columns — while pivoted the source columns are returned). Not representable in a
+   * definition, and kept by `setColumnDefs` on this grid because it reconciles them by colId: the
+   * row-grouping columns ({@link getRowGroupColumns}), a column's second and later aggregates, and
+   * sorts on internal columns (the auto-group column). Capture those with {@link captureViewState}
+   * to carry them to another grid. A column added by {@link addSparklineColumn} is included; its
+   * definition reads this grid's columns, so it does not carry over to another grid.
+   */
+  getColumnDefs(): ColDef<TData>[];
 
   /** Set the row data. */
-  setRowData(rows: RowData[]): void;
+  setRowData(rows: TData[]): void;
 
   /**
    * Visit every node the row model holds, filtered out or collapsed included: every data row first
@@ -367,17 +579,17 @@ export interface IGridAPI {
    * group node (`getGroupNodes()` order). `idx` counts across both. Application-pinned band rows
    * are not in the row model and are not visited.
    */
-  forEachNode(callback: (node: IRowNode, idx: number) => void): void;
+  forEachNode(callback: (node: IRowNode<TData>, idx: number) => void): void;
   /**
    * Visit every data row — every node that is not a group node (`isGroup` false), filtered out or
    * collapsed included, in the order {@link forEachNode} visits them. A tree-data parent that
    * carries its own data is a data row and is visited.
    */
-  forEachLeafNode(callback: (node: IRowNode, idx: number) => void): void;
+  forEachLeafNode(callback: (node: IRowNode<TData>, idx: number) => void): void;
   /** Visit every row node that remains after filtering, before client-side sorting. */
-  forEachNodeAfterFilter(callback: (node: IRowNode, idx: number) => void): void;
+  forEachNodeAfterFilter(callback: (node: IRowNode<TData>, idx: number) => void): void;
   /** Visit every row node that remains after filtering in its final sorted order. */
-  forEachNodeAfterFilterAndSort(callback: (node: IRowNode, idx: number) => void): void;
+  forEachNodeAfterFilterAndSort(callback: (node: IRowNode<TData>, idx: number) => void): void;
 
   /**
    * Server-side row model only: re-invoke the data source because the server's data changed —
@@ -394,9 +606,9 @@ export interface IGridAPI {
   refreshServerSideData(options?: ServerSideRefreshOptions): Promise<boolean>;
 
   /** Replace the application-owned rows in the frozen top band. */
-  setPinnedTopRowData(rows: RowData[]): void;
+  setPinnedTopRowData(rows: TData[]): void;
   /** Replace the application-owned rows in the frozen bottom band. */
-  setPinnedBottomRowData(rows: RowData[]): void;
+  setPinnedBottomRowData(rows: TData[]): void;
   /**
    * Explicitly mirror a displayed row-model node in a frozen band. Generated group node ids are
    * supported; pass null to unpin. When an {@link GridOptions.isRowPinned} callback is configured,
@@ -416,13 +628,13 @@ export interface IGridAPI {
    * Group-row aggregates are the server's and are not recomputed. Block fetches still in flight
    * for a listing whose indices shifted are discarded and re-requested.
    */
-  applyTransaction(tx: RowTransaction<RowData>): RowTransactionResult;
+  applyTransaction(tx: RowTransaction<TData>): RowTransactionResult;
   /**
    * Mutate rows immediately, then defer filter/sort/group/aggregate derivation and rendering so
    * nearby calls share one pass. Resolves after that pass with this call's own counts. Works on
    * both row models, with the server-side contract of {@link applyTransaction}.
    */
-  applyTransactionAsync(tx: RowTransaction<RowData>): Promise<RowTransactionResult>;
+  applyTransactionAsync(tx: RowTransaction<TData>): Promise<RowTransactionResult>;
   /** Immediately finalize any pending asynchronous transactions. No-op when none are pending. */
   flushAsyncTransactions(): void;
 
@@ -540,11 +752,19 @@ export interface IGridAPI {
   setAllGroupsExpanded(expanded: boolean): void;
 
   /**
+   * Expand or collapse the named group/tree nodes in one pass — a single view rebuild and repaint
+   * for the whole list, where `groupToggleExpand` costs one per node. Ids that name no group are
+   * ignored; nothing is rebuilt when every named node is already in the requested state. No-op
+   * when the grid is not grouped. Group ids come from `getGroupNodes()` / `getRowNode(id)`.
+   */
+  setGroupExpanded(groupIds: string | string[], expanded: boolean): void;
+
+  /**
    * Every group / tree node currently in the model, at every level, in creation order. Empty when
    * the grid is not grouped. Group nodes are not visited by `forEachNodeAfterFilter*`, which walk
    * data rows; use this to address a group — for example to pin one with `setRowPinned`.
    */
-  getGroupNodes(): IRowNode[];
+  getGroupNodes(): IRowNode<TData>[];
 
   /**
    * The row model's node for `rowId`: a data row, a client-side group or tree node (its id is the
@@ -557,7 +777,7 @@ export interface IGridAPI {
    * if (node?.isGroup) console.log(node.groupKey, node.level, node.children?.length);
    * ```
    */
-  getRowNode(rowId: GridId): IRowNode | undefined;
+  getRowNode(rowId: GridId): IRowNode<TData> | undefined;
 
   /**
    * The raw value a cell holds — unformatted. On a leaf row, the column's value for that row (its
@@ -642,8 +862,32 @@ export interface IGridAPI {
   applyViewState(state: GridViewState, opts?: { columns?: "exact" | "merge" }): void;
 
   /* ----- Selection ----- */
-  /** Focus a single cell (view index + global leaf column index). */
+  /**
+   * Make a cell the active cell (a 1×1 selection) and scroll it into view — what a click or an
+   * arrow key does. Two forms:
+   * - `setFocusedCell(cell)`: by {@link CellRef}, the pair of {@link getFocusedCell}; the only form
+   *   that reaches a pinned top/bottom row (`cell.rowPinned`, which must name the band the row is
+   *   in; a `pinnedTopRowData` / `pinnedBottomRowData` row goes by the band-scoped id the grid
+   *   gives it, as `getFocusedCell` and `getRenderedNodes` report it). Columns resolve like every
+   *   column-id input (`colInstanceId`, then `colId`, then `key`).
+   * - `setFocusedCell(viewIdx, colIdx)`: by page-relative view index and index among the visible
+   *   leaves (the leading row-number / selection columns included), body rows only.
+   *
+   * No-op for a row that has no slot on the current page (unknown, filtered out, under a collapsed
+   * group, on another page) or a hidden or unknown column. Emits `selectionChanged` and
+   * `focusChanged` with `reason: "api"`.
+   */
+  setFocusedCell(cell: CellRef): void;
   setFocusedCell(viewIdx: number, colIdx: number): void;
+  /**
+   * The active cell — the one a click, keyboard navigation or {@link setFocusedCell} last made the
+   * cursor, the corner a range extends from — as a {@link CellRef} (`rowPinned` set for a pinned
+   * band's row), or `null` when there is none: nothing selected, a column selection, the header
+   * holding the keyboard cursor, or a row not loaded yet (server-side). On the row-number column
+   * (row selection's keyboard stop) it names that column's colId. Independent of DOM focus: the
+   * grid keeps its active cell while focus is elsewhere on the page.
+   */
+  getFocusedCell(): CellRef | null;
   /** Start a range selection at a cell (collapses to a single cell). */
   selectRange(viewIdx: number, colIdx: number): void;
   /** Extend the current range's active corner to a cell. */
@@ -670,14 +914,14 @@ export interface IGridAPI {
    * Underlying data objects of the currently-selected rows. Under a server-side select-all these
    * are the LOADED selected rows only — use `getRowSelectionState()` for the whole selection.
    */
-  getSelectedRows(): unknown[];
+  getSelectedRows(): TData[];
   /**
    * Currently-selected row nodes (unloaded / no-longer-present rows are omitted). Group rows are
    * never included, even fully selected ones under `groupSelectsChildren` — the selection holds
    * data rows only, so this always matches `getSelectedRows()` and `getSelection().selectedRowIds`.
    * Under a server-side select-all: the loaded selected rows only.
    */
-  getSelectedNodes(): IRowNode[];
+  getSelectedNodes(): IRowNode<TData>[];
   /** Select every selectable data row in the select-all scope — the whole filtered set by
    * default, or the current page under `selectAllScope: "page"`. Skips group rows (under
    * `groupSelectsChildren` a group on the page contributes its leaves, collapsed ones included).
@@ -796,7 +1040,7 @@ export interface IGridAPI {
    * The node displayed at a page-relative view index (see above), or `undefined` past the end —
    * and server-side for a row that is not loaded yet.
    */
-  getDisplayedRowAtIndex(viewIdx: number): IRowNode | undefined;
+  getDisplayedRowAtIndex(viewIdx: number): IRowNode<TData> | undefined;
   /**
    * The page-relative view index of the first body row the grid has rendered, overscan rows
    * included; -1 before the grid is rendered or when no row is rendered.
@@ -809,7 +1053,7 @@ export interface IGridAPI {
    * rendered window (overscan rows included; rows not loaded yet are skipped), the frozen bottom
    * band. Empty before the grid is rendered.
    */
-  getRenderedNodes(): IRowNode[];
+  getRenderedNodes(): IRowNode<TData>[];
 
   /* ----- Scrolling ----- */
   /**
@@ -837,6 +1081,20 @@ export interface IGridAPI {
    * still scrolls (a row that exists is revealed even if the colId is bogus).
    */
   ensureCellVisible(cell: CellRef, opts?: { position?: RowScrollPosition }): boolean;
+  /**
+   * Scroll the body to absolute pixel offsets: `topPx` vertically, `leftPx` across the centre
+   * section (the pinned sections do not scroll). An omitted or non-finite axis is left where it
+   * is; negative offsets clamp to 0, and the browser clamps past-the-end ones to the scroll range.
+   * The header, the frozen bands and the rendered row window follow as they do a user scroll. To
+   * reveal a particular row or column, {@link ensureRowVisible} and {@link ensureColumnVisible}
+   * work out the offset for you. No-op, with a warning, before the grid is rendered.
+   *
+   * ```ts
+   * api.scrollTo({ topPx: 0 });              // back to the top, keep the horizontal position
+   * api.scrollTo({ topPx: 0, leftPx: 0 });   // home
+   * ```
+   */
+  scrollTo(position: GridScrollPosition): void;
 
   /* ----- Tooltips ----- */
   /** Programmatically show the tooltip for a body cell (bypasses the hover delay). No-op if the
@@ -976,21 +1234,34 @@ export interface IGridAPI {
    * Download the grid as a CSV file. No-op until the grid is rendered (the exporter is wired by the
    * renderer on attach).
    */
-  exportDataAsCsv(params?: ExportParams): void;
+  exportDataAsCsv(params?: ExportParams<TData>): void;
   /** Download the grid as an Excel (.xlsx) file. No-op until the grid is rendered. */
-  exportDataAsExcel(params?: ExportParams): void;
+  exportDataAsExcel(params?: ExportParams<TData>): void;
   /**
    * Return the CSV text for the current state + params WITHOUT downloading — for programmatic export
    * (upload, custom filename dialog, further processing). "" before the grid is rendered or when
    * there's nothing to export.
    */
-  getDataAsCsv(params?: ExportParams): string;
+  getDataAsCsv(params?: ExportParams<TData>): string;
   /**
    * Return the raw .xlsx bytes (Uint8Array) for the current state + params WITHOUT downloading — so
    * the caller decides what to do (stream to a server, encrypt/password-protect, wrap in a Blob,
    * upload, etc.). Empty Uint8Array before the grid is rendered or when there's nothing to export.
    */
-  getDataAsExcel(params?: ExportParams): Promise<Uint8Array>;
+  getDataAsExcel(params?: ExportParams<TData>): Promise<Uint8Array>;
 
+  /**
+   * Tear the grid down. On the api `createGrid` returns — the one the React and Angular bindings
+   * hold, and the one cell renderers receive — this detaches the renderer, destroys it and the
+   * core, once (a second call does nothing). On the bare api of `initDomRenderer` it only marks the
+   * api destroyed; detaching is the caller's job there.
+   */
   destroy(): void;
+  /**
+   * Whether {@link destroy} has been called — true from the start of the teardown on, so a cell
+   * renderer's or a framework component's own cleanup can tell the grid is going away. Calls on a
+   * destroyed grid do not throw, but they reach a detached renderer: reads report the last state,
+   * and writes change model state no one will see. Check this rather than relying on either.
+   */
+  isDestroyed(): boolean;
 }

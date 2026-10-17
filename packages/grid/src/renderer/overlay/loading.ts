@@ -1,5 +1,6 @@
+import { DEFAULT_LOCALE_TEXT } from "../../interfaces/locale";
 /** The loading label shown when `loadingMessage` is not set. */
-export const DEFAULT_LOADING_MESSAGE = "Loading data...";
+export const DEFAULT_LOADING_MESSAGE = DEFAULT_LOCALE_TEXT.loading;
 
 export function createLoadingOverlay(): HTMLDivElement {
   const overlay = document.createElement("div");

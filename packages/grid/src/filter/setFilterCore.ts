@@ -32,6 +32,7 @@
  * alongside the key, so nothing has to re-derive it by comparing against the sentinel.
  */
 import { FilterDef, FilterType, SetFilterMode } from "../interfaces/filter";
+import { defaultLocaleText, type LocaleTextResolver } from "../interfaces/locale";
 import { isBlankValue } from "../misc";
 import { SetFilterOptions } from "./types";
 
@@ -139,9 +140,14 @@ export function staticSetValue(entry: unknown): unknown {
   return Object.prototype.hasOwnProperty.call(entry, "value") ? (entry as { value: unknown }).value : entry;
 }
 
-export function buildSetOptions(values: any[], keyFn: ValueKeyFn = defaultValueKey, labelFn: ValueLabelFn = defaultValueLabel): SetFilterOptions[] {
+export function buildSetOptions(
+  values: any[],
+  keyFn: ValueKeyFn = defaultValueKey,
+  labelFn: ValueLabelFn = defaultValueLabel,
+  t: LocaleTextResolver = defaultLocaleText,
+): SetFilterOptions[] {
   const options: SetFilterOptions[] = [
-    { type: "select_all", key: SELECT_ALL_KEY, label: "(Select All)", raw: SELECT_ALL_KEY, hidden: false },
+    { type: "select_all", key: SELECT_ALL_KEY, label: t("selectAll"), raw: SELECT_ALL_KEY, hidden: false },
   ];
   // No SELECT_ALL_KEY seed: value keys are namespaced, so an app key can no longer collide with the
   // synthetic rows — which the seed used to "handle" by silently dropping the value.
@@ -163,7 +169,7 @@ export function buildSetOptions(values: any[], keyFn: ValueKeyFn = defaultValueK
   }
 
   if (hasBlanks) {
-    options.splice(1, 0, { type: "blanks", key: BLANKS_KEY, label: "(Blanks)", raw: null, hidden: false });
+    options.splice(1, 0, { type: "blanks", key: BLANKS_KEY, label: t("blanks"), raw: null, hidden: false });
   }
 
   return options;

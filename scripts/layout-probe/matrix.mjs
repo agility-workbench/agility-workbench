@@ -55,4 +55,14 @@ export const CASES = [
     known: [{ steps: /^height@180$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
   },
   { name: "no-vertical-scroll-right-pin", config: { pinned: "right", rows: 5 } },
+  // wrapHeaderText + autoHeaderHeight on every leaf and group: measured level heights must keep the
+  // wrapper, every section's cells, the body frame and the pinned sections in step.
+  {
+    name: "wrap-header",
+    config: { columns: "groups2", pinned: "both", headerWrap: true },
+    sequences: ["headerHeight", "scrolled", "hideToggle"],
+    // Two wrapped levels are ~200px of fixed chrome; at the two smallest heights the body keeps
+    // its floor instead of the chrome yielding (the same A3.14 shape as the kitchen case).
+    known: [{ steps: /^height@(320|180)$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
+  },
 ];

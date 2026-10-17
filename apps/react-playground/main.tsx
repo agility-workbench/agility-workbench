@@ -20,10 +20,12 @@ import ColumnStateDemo from "./ColumnStateDemo";
 import VisualStatesDemo from "./VisualStatesDemo";
 import QuickFilterDemo from "./QuickFilterDemo";
 import HeaderComponentDemo from "./HeaderComponentDemo";
+import HeaderWrapDemo from "./HeaderWrapDemo";
 import TooltipDemo from "./TooltipDemo";
 import ActionFrameDemo from "./ActionFrameDemo";
 import FooterVisibilityDemo from "./FooterVisibilityDemo";
 import SparklineDemo from "./SparklineDemo";
+import CellRenderersDemo from "./CellRenderersDemo";
 import ToolbarDemo from "./ToolbarDemo";
 import ResponsiveToolbarDemo from "./ResponsiveToolbarDemo";
 import SavedViewsDemo from "./SavedViewsDemo";
@@ -36,6 +38,8 @@ import RowSelectionCheckboxDemo from "./RowSelectionCheckboxDemo";
 import HighFrequencyDemo from "./HighFrequencyDemo";
 import IndexedInsertDemo from "./IndexedInsertDemo";
 import SetFilterComponentsDemo from "./SetFilterComponentsDemo";
+import TouchDemo from "./TouchDemo";
+import LocalizationDemo from "./LocalizationDemo";
 import "./roboto-font.css";
 import "./style.css";
 
@@ -71,11 +75,15 @@ const PAGES = [
   { id: "quickFilter", label: "Quick filter", render: () => <QuickFilterDemo /> },
   { id: "setFilterComponents", label: "Set-filter components", render: () => <SetFilterComponentsDemo /> },
   { id: "headerComponents", label: "Custom headers", render: () => <HeaderComponentDemo /> },
+  { id: "headerWrap", label: "Header wrapping & locked columns", render: () => <HeaderWrapDemo /> },
   { id: "tooltips", label: "Tooltips", render: () => <TooltipDemo /> },
   { id: "actionFrame", label: "ActionFrame", render: () => <ActionFrameDemo /> },
   { id: "kitchenSink", label: "Kitchen sink", render: () => <KitchenSinkDemo /> },
   { id: "footerVisibility", label: "Footer visibility", render: () => <FooterVisibilityDemo /> },
   { id: "sparklines", label: "Sparklines", render: () => <SparklineDemo /> },
+  { id: "cellRenderers", label: "Built-in renderers", render: () => <CellRenderersDemo /> },
+  { id: "touch", label: "Touch & pointer", render: () => <TouchDemo /> },
+  { id: "localization", label: "Localization", render: () => <LocalizationDemo /> },
 ] as const;
 
 function Root() {

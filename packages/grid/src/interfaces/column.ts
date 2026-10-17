@@ -11,6 +11,7 @@ import type { MenuItem } from "./menuItem";
 import type { ColumnMenuContext } from "../menu/context";
 import type { Column } from "../column/column";
 import type { AggregateKind } from "./aggregate";
+import type { IRowNode } from "./iRowNode";
 
 /**
  * Resolves the items shown in a single column's menu. Mirrors `BodyContextMenuGetter`, which does
@@ -40,39 +41,46 @@ export type ColumnSection = "left" | "center" | "right";
  *
  * - `"text"` — plain formatted text, opting a column out of its type's default renderer (a
  *   `ColumnType.BOOLEAN` column otherwise draws `BooleanCellRenderer`'s checkbox).
+ * - `"link"` — `LinkCellRenderer`, an `<a>` to the value (`LinkCellRendererParams`).
+ * - `"image"` — `ImageCellRenderer`, an `<img>` of the value (`ImageCellRendererParams`).
+ * - `"progress"` — `ProgressCellRenderer`, a bar filled to the value (`ProgressCellRendererParams`).
+ * - `"rating"` — `RatingCellRenderer`, stars filled to the value (`RatingCellRendererParams`).
+ *
+ * Each built-in reads its options from `cellRendererParams`.
  */
-export type CellRendererAlias = "text";
+export type CellRendererAlias = "text" | "link" | "image" | "progress" | "rating";
 
 /** Context passed to the per-column cell styling callbacks (`cellClass` / `cellStyle`). */
-export interface CellClassParams {
+export interface CellClassParams<TData = any> {
   /** The raw cell value (from valueGetter / row data). */
   value: any;
-  /** The row's underlying data object. */
-  data: any;
+  /** The row's underlying data object (a placeholder on a client-side group row). */
+  data: TData;
   /** The row's stable id. */
   rowId: string;
   /** The row's current view index. */
   rowIndex: number;
   /** The column definition for this cell. */
-  colDef: ColDef;
+  colDef: ColDef<TData>;
   /** Resolved defaults and metadata for this row, when `getRowPresentation` is configured. */
   rowPresentation?: import("./gridOptions").RowPresentation;
   /** The row node. Set for body cells (`cellClass`, `cellStyle`, `actionFrameIndicator`); absent
    * where the grid evaluates a callback against a row it has no node for (exports). */
-  node?: import("./iRowNode").IRowNode;
+  node?: import("./iRowNode").IRowNode<TData>;
   /** True on a group row. Only `actionFrameIndicator` is evaluated on group rows, where `value`
    * is the group cell's value (its aggregate, or the label on the group's label column). */
   isGroup?: boolean;
 }
 
 /** Context passed to `ColDef.groupValueGetter` for one group row. */
-export interface GroupValueGetterParams {
+export interface GroupValueGetterParams<TData = any> {
   /** The group row: `level`, `groupKey`, `groupValue`, `isExpanded` say where it sits. */
-  node: import("./iRowNode").IRowNode;
+  node: import("./iRowNode").IRowNode<TData>;
   /**
    * Server-side row model: the raw group row the data source returned (a `COUNT(*)` or any other
    * field of the GROUP BY result is read off it). Client-side row model: undefined — a client-side
-   * group row is synthesized and has no data row of its own.
+   * group row is synthesized and has no data row of its own. Typed `any` rather than the row type:
+   * a server-side group row has the GROUP BY result's shape, not a leaf row's.
    */
   data: any;
   /**
@@ -83,17 +91,39 @@ export interface GroupValueGetterParams {
 }
 
 /** Extra CSS class(es) for a cell: a static value or a function of the cell context. */
-export type CellClass =
+export type CellClass<TData = any> =
   | string
   | string[]
-  | ((params: CellClassParams) => string | string[] | null | undefined);
+  | ((params: CellClassParams<TData>) => string | string[] | null | undefined);
 
 /** Inline styles for a cell: a static object or a function of the cell context. */
-export type CellStyle =
+export type CellStyle<TData = any> =
   | Partial<CSSStyleDeclaration>
-  | ((params: CellClassParams) => Partial<CSSStyleDeclaration> | null | undefined);
+  | ((params: CellClassParams<TData>) => Partial<CSSStyleDeclaration> | null | undefined);
 
-export interface ColDef {
+/**
+ * One column (or, with `children`, one column group) of the grid.
+ *
+ * `TData` is the row type — the shape of one object in `rowData` — and defaults to `any`, so an
+ * unparameterized `ColDef` behaves exactly as before. Supplying it (`ColDef<Trade>`) types the
+ * row wherever a column callback receives one:
+ * - `valueGetter` gets the row node, `IRowNode<TData>` (read the row off `node.data`);
+ * - `cellClass` / `cellStyle` / `colSpan` / `actionFrameIndicator` get `CellClassParams<TData>`
+ *   (`data: TData`, `node: IRowNode<TData>`);
+ * - `cellRenderer` gets `CellRendererParams<TData>` (`node: IRowNode<TData>`; its `data` stays
+ *   `any`, being the row node on a column cell — see `CellRendererParams.data`);
+ * - `cellEditor` gets `ICellEditorParams<TData>` (`row: IRowNode<TData>`);
+ * - `tooltipComponent` / `tooltipValueGetter` get `TooltipComponentParams<TData>` (`data: TData`);
+ * - `actionFrameComponent` gets `ActionFrameComponentParams<TData>` (`data: TData`);
+ * - `valueFormatter` / `valueParser` get the row node as `row: IRowNode<TData>`;
+ * - `groupValueGetter`, `comparator` and a function `filter` get `IRowNode<TData>` nodes;
+ * - `children` are `ColDef<TData>` too.
+ *
+ * Cell values themselves stay `any` (a column's value type is not derived from `TData`), and the
+ * runtime `Column` objects the grid hands back (`CellRendererParams.colDef`, `api.getColumn`) are
+ * not parameterized.
+ */
+export interface ColDef<TData = any> {
   colId?: string;
   key?: string;
   label: string;
@@ -125,12 +155,12 @@ export interface ColDef {
    */
   tooltipField?: string;
   /** Computes tooltip text for a body cell. See {@link tooltipField} for precedence. */
-  tooltipValueGetter?: (params: TooltipComponentParams) => string | null | undefined;
+  tooltipValueGetter?: (params: TooltipComponentParams<TData>) => string | null | undefined;
   /**
    * Custom component rendered inside the tooltip (a function returning an element/string, or a class
    * with `init/getGui/refresh/destroy`). Highest precedence. See {@link TooltipComponent}.
    */
-  tooltipComponent?: TooltipComponent;
+  tooltipComponent?: TooltipComponent<TData>;
   /** Extra params merged into {@link TooltipComponentParams} for this column's tooltip component. */
   tooltipComponentParams?: any;
   /**
@@ -163,7 +193,7 @@ export interface ColDef {
    * `groupDisplayType: "groupRows"` a group row has a single full-width cell standing in for the
    * nominal column (the first non-leading leaf), so only that column's frame opens there.
    */
-  actionFrameComponent?: ActionFrameComponent;
+  actionFrameComponent?: ActionFrameComponent<TData>;
   /** Extra params merged into {@link ActionFrameComponentParams} for this column's ActionFrame. */
   actionFrameComponentParams?: any;
   /**
@@ -193,7 +223,7 @@ export interface ColDef {
    * while a field name reads the group's (synthetic) data and so never marks a client-side group.
    * In `"groupRows"` mode the full-width cell carries the nominal column's indicator.
    */
-  actionFrameIndicator?: boolean | string | ((params: CellClassParams) => boolean);
+  actionFrameIndicator?: boolean | string | ((params: CellClassParams<TData>) => boolean);
   /**
    * Tooltip for this column's *header* cell. A plain string, or a custom {@link TooltipComponent}.
    */
@@ -202,7 +232,11 @@ export interface ColDef {
   minWidth?: number; // minimum width (resizable)
   maxWidth?: number; // maximum width (resizable)
   depth?: number;   // for hierarchical columns
-  valueGetter?: (row: any) => any;
+  /**
+   * Computes this column's value on a leaf row. Receives the row NODE, not the row data object:
+   * read the row off `node.data`. Never runs on a group row (see {@link groupValueGetter}).
+   */
+  valueGetter?: (node: IRowNode<TData>) => any;
   /**
    * The value this column holds on a GROUP row when no aggregate is assigned to it. Receives the
    * group node, its aggregates by colId, and (server-side row model only) the group's raw data
@@ -210,8 +244,8 @@ export interface ColDef {
    * the empty fallback; it never runs on a leaf row and `valueGetter` never runs on a group row.
    * One rule feeds cell renderers, the clipboard and the click/ActionFrame payloads alike.
    */
-  groupValueGetter?: (params: GroupValueGetterParams) => any;
-  valueFormatter?: (params: ValueFormatterParams) => string;
+  groupValueGetter?: (params: GroupValueGetterParams<TData>) => any;
+  valueFormatter?: (params: ValueFormatterParams<TData>) => string;
   // When true, cells in this column can be edited (e.g. via double-click). Defaults to false.
   editable?: boolean;
   // Converts text headed for a cell — typed, pasted, filled, or a string given to setCellValue —
@@ -220,36 +254,38 @@ export interface ColDef {
   // through Number(), dates from ISO 8601 text in the cell's stored shape, booleans from
   // true/false/yes/no/1/0, and strings verbatim; blank is null, and text the type cannot hold is
   // refused.
-  valueParser?: (params: ValueParserParams) => any;
+  valueParser?: (params: ValueParserParams<TData>) => any;
   // The editor used when a cell in this column is edited. A built-in alias ("text" | "number" |
   // "date" | "boolean" | "select" | "textarea"), a custom editor class, or a factory function.
   // When omitted, a default is chosen from `type` (number→number, date→date, boolean→boolean,
   // else text).
-  cellEditor?: CellEditor;
+  cellEditor?: CellEditor<TData>;
   // Config passed to the editor (e.g. { values } for the select editor).
   cellEditorParams?: any;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   /**
    * What a data cell in this column shows: a renderer function, a renderer class, or a built-in
-   * name (`CellRendererAlias`). When omitted, a `ColumnType.BOOLEAN` column draws a checkbox
-   * (`BooleanCellRenderer`) and every other type shows the formatted value as text; set `"text"`
-   * to keep a boolean column as text. The renderer changes only what the cell shows: export, the
-   * clipboard, tooltips and quick-filter matching still read the formatted value.
+   * name (`CellRendererAlias`: `"link"`, `"image"`, `"progress"`, `"rating"`, `"text"`). When
+   * omitted, a `ColumnType.BOOLEAN` column draws a checkbox (`BooleanCellRenderer`) and every other
+   * type shows the formatted value as text; set `"text"` to keep a boolean column as text. The
+   * renderer changes only what the cell shows: export, the clipboard, tooltips and quick-filter
+   * matching still read the formatted value.
    */
-  cellRenderer?: CellRenderer | CellRendererAlias;
+  cellRenderer?: CellRenderer<TData> | CellRendererAlias;
+  /** Options for the renderer, e.g. `ProgressCellRendererParams` for `cellRenderer: "progress"`. */
   cellRendererParams?: any;
   /**
    * Extra CSS class(es) applied to every data cell in this column. A static class/array, or a
    * function returning class(es) from the cell context (value, row data, etc.). Recomputed as cells
    * scroll into view; a class that stops being returned is cleared on the next repaint.
    */
-  cellClass?: CellClass;
+  cellClass?: CellClass<TData>;
   /**
    * Inline styles applied to every data cell in this column (camelCase CSS properties). A static
    * object, or a function returning styles from the cell context. Recomputed as cells scroll into
    * view; a property that stops being returned is cleared on the next repaint.
    */
-  cellStyle?: CellStyle;
+  cellStyle?: CellStyle<TData>;
   /**
    * Number of columns this cell should span horizontally: the cell widens to cover itself plus the
    * next `N-1` adjacent leaf columns, and those covered cells are hidden. Evaluated per row from the
@@ -262,11 +298,11 @@ export interface ColDef {
    * on some rows but not others can produce an L-shaped selection whose border under the spanned
    * portion is not drawn on the non-spanning rows. This is a known limitation.
    */
-  colSpan?: (params: CellClassParams) => number;
+  colSpan?: (params: CellClassParams<TData>) => number;
   sparklineType?: "line" | "bar" | "area";
   type?: ColumnType;
   format?: string; // e.g., for date or currency formatting
-  children?: ColDef[];
+  children?: ColDef<TData>[];
   hidden?: boolean;
   pinned?: "left" | "right";
   sortable?: boolean;
@@ -288,7 +324,7 @@ export interface ColDef {
    * `a`/`b` are the two cell values; the row nodes are provided for value-getter or cross-field
    * comparisons. When omitted, a comparator is auto-derived from the column `type`.
    */
-  comparator?: ComparatorFn;
+  comparator?: ComparatorFn<TData>;
   /**
    * Initial sort direction for this column ("asc" | "desc"), applied once when the grid first sets
    * up its columns. Combine with `sortIndex` to order a multi-column initial sort. Overrides the
@@ -301,7 +337,7 @@ export interface ColDef {
    * order.
    */
   sortIndex?: number;
-  filter?: Filter;
+  filter?: Filter<TData>;
   filterParams?: FilterParams;
   groupable?: boolean;
   /**
@@ -340,6 +376,33 @@ export interface ColDef {
   pivotComparator?: (a: any, b: any) => number;
   resizable?: boolean;
   movable?: boolean;
+  /**
+   * Keep this column at an edge of its section: `true` or `"left"` holds it at the left edge of
+   * its section's order (after the selection-checkbox column), `"right"` at the right edge. A
+   * locked column cannot be dragged or moved (header drag, column panel, `api.moveColumn`), columns
+   * dropped next to it never displace it, and `applyColumnState`, saved views and `setColumnDefs`
+   * put it back at its edge. Several columns locked to the same edge keep their relative order.
+   * Pinning still works and composes: a locked column pinned left sits at the edge of the left
+   * section. On a child of a column group the lock applies within the group (the group's edge);
+   * set it on the group definition to lock the whole group. Default `false`.
+   */
+  lockPosition?: boolean | "left" | "right";
+  /**
+   * Wrap a long header label onto several lines instead of truncating it on one; the sort icon,
+   * menu and expander keep their place beside it. Without {@link autoHeaderHeight} the header keeps
+   * its configured height and a label that wraps past it is clipped. Works on group definitions
+   * too, and in `defaultColDef`. Default `false`.
+   */
+  wrapHeaderText?: boolean;
+  /**
+   * Grow the header level this column's label sits on so the whole label fits: the level becomes
+   * as tall as the tallest such label on it (plus the cell's padding), never shorter than its
+   * configured `headerHeight` / `leafHeaderHeight` / `parentHeaderHeight`. Meant for use with
+   * {@link wrapHeaderText}; on a group definition it grows that group's level. Pinned sections grow
+   * together. Re-measured when widths, visible columns, labels, header heights, the theme or the
+   * loaded fonts change. Default `false`.
+   */
+  autoHeaderHeight?: boolean;
   hideable?: boolean;
   /**
    * Omit this column from the built-in column-management drawer while leaving it available in the
@@ -397,4 +460,4 @@ export const NON_DEFAULTABLE_COLDEF_KEYS = ["colId", "key", "label", "children"]
  * The shape of the grid-level `defaultColDef`: any {@link ColDef} field except the per-column
  * identity/structure ones (see {@link NON_DEFAULTABLE_COLDEF_KEYS}), all optional.
  */
-export type DefaultColDef = Omit<ColDef, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;
+export type DefaultColDef<TData = any> = Omit<ColDef<TData>, (typeof NON_DEFAULTABLE_COLDEF_KEYS)[number]>;

@@ -60,6 +60,8 @@ export interface LayoutMatrixConfig {
   headerHeight?: number;
   rowHeight?: number;
   toolbar?: boolean;
+  /** Long header labels with `wrapHeaderText` + `autoHeaderHeight` on every column and group. */
+  headerWrap?: boolean;
 }
 
 export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
@@ -78,6 +80,7 @@ export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
   headerHeight: 0,
   rowHeight: 0,
   toolbar: false,
+  headerWrap: false,
 };
 
 export interface InvariantViolation {
@@ -189,10 +192,13 @@ function buildColumnDefs(config: Required<LayoutMatrixConfig>): ColDef[] {
   const wide = config.pinnedWidth === "wide";
   const pinLeft = config.pinned === "left" || config.pinned === "both";
   const pinRight = config.pinned === "right" || config.pinned === "both";
+  // headerWrap: labels long enough to wrap two to four times at these widths (the wrap flags come
+  // from defaultColDef, see buildOptions).
+  const long = (label: string) => config.headerWrap ? `${label} — a long header label that wraps` : label;
   const leaf = (colId: string, label: string, width: number, extra: Partial<ColDef> = {}): ColDef =>
-    ({ colId, key: colId, label, width, ...extra });
+    ({ colId, key: colId, label: long(label), width, ...extra });
   const group = (colId: string, label: string, children: ColDef[], pinned?: "left" | "right"): ColDef =>
-    ({ colId, label, children, ...(pinned ? { pinned } : {}) });
+    ({ colId, label: long(label), children, ...(pinned ? { pinned } : {}) });
 
   const region = leaf("region", "Region", wide ? 260 : 130);
   // `columnGroupShow: "open"` on one leaf per group gives that group a real expander (a group whose
@@ -268,6 +274,7 @@ function buildOptions(config: Required<LayoutMatrixConfig>, rows: Row[]): Create
   };
   if (config.headerHeight > 0) options.headerHeight = config.headerHeight;
   if (config.rowHeight > 0) options.rowHeight = config.rowHeight;
+  if (config.headerWrap) options.defaultColDef = { wrapHeaderText: true, autoHeaderHeight: true };
   if (config.toolbar) options.toolbar = { sorting: true, grouping: true, quickFilter: true };
   if (config.checkboxes !== "none") {
     options.rowSelection = {
@@ -474,6 +481,7 @@ const FIELDS: FieldSpec[] = [
   { key: "headerHeight", label: "headerHeight", kind: "number" },
   { key: "rowHeight", label: "rowHeight", kind: "number" },
   { key: "toolbar", label: "Toolbar", kind: "bool" },
+  { key: "headerWrap", label: "Wrapped headers", kind: "bool" },
 ];
 
 const style = document.createElement("style");

@@ -51,6 +51,10 @@ export class GridRendererCoreEventBinder {
         this.params.setLoading(ev.overlayType === "loading");
         if (ev.overlayType === "loading") {
           this.params.setEmpty(false);
+        } else if (ev.overlayType === "noRows") {
+          // Asked for explicitly (`api.showNoRowsOverlay()`): shown whatever the row count, until
+          // the next data change re-decides it.
+          this.params.setEmpty(true);
         } else {
           // Loading ended (or the app cleared the overlay): the empty state the load suppressed
           // has to come back when the model still holds nothing, since no rowsChanged follows a

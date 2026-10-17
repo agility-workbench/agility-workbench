@@ -46,6 +46,16 @@ function destroyInstance(instance: GridInstance): void {
   } catch { }
 }
 
+/**
+ * The `<Grid>` component's call signature. `React.forwardRef` drops type parameters, so the
+ * component is re-typed with this generic signature: `<Grid<Trade> columnDefs={…} />` types the
+ * row as `Trade`, and the `ref` / `apiRef` handle as `IGridAPI<Trade>`. Without a type argument
+ * the row type comes from typed `columnDefs`, else it is `any`, as before.
+ */
+export type GridComponent = (<TData = any>(
+  props: GridProps<TData> & React.RefAttributes<IGridAPI<TData> | null>,
+) => React.ReactElement | null) & { displayName?: string };
+
 export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
   function Grid(props, forwardedRef) {
     const hostRef = useRef<HTMLDivElement | null>(null);
@@ -67,6 +77,27 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     const onFilterChangedRef = useRef(props.onFilterChanged);
     const onQuickFilterFindChangedRef = useRef(props.onQuickFilterFindChanged);
     const onHistoryChangedRef = useRef(props.onHistoryChanged);
+    const onColumnWidthsChangedRef = useRef(props.onColumnWidthsChanged);
+    const onEditingChangedRef = useRef(props.onEditingChanged);
+    const onFocusChangedRef = useRef(props.onFocusChanged);
+    const onHeaderFocusChangedRef = useRef(props.onHeaderFocusChanged);
+    const onRowsChangedRef = useRef(props.onRowsChanged);
+    const onPivotChangedRef = useRef(props.onPivotChanged);
+    const onPivotColumnLimitReachedRef = useRef(props.onPivotColumnLimitReached);
+    const onModelUpdatedRef = useRef(props.onModelUpdated);
+    const onViewportChangedRef = useRef(props.onViewportChanged);
+    const onCellsChangedRef = useRef(props.onCellsChanged);
+    const onAggregateChangedRef = useRef(props.onAggregateChanged);
+    const onOverlayShowRef = useRef(props.onOverlayShow);
+    const onTooltipShowRef = useRef(props.onTooltipShow);
+    const onTooltipHideRef = useRef(props.onTooltipHide);
+    const onActionFrameChangedRef = useRef(props.onActionFrameChanged);
+    const onKeyboardNavigationModeChangedRef = useRef(props.onKeyboardNavigationModeChanged);
+    const onRowGroupOpenedRef = useRef(props.onRowGroupOpened);
+    const onColumnGroupOpenedRef = useRef(props.onColumnGroupOpened);
+    const onFirstDataRenderedRef = useRef(props.onFirstDataRendered);
+    const onRowDataUpdatedRef = useRef(props.onRowDataUpdated);
+    const onBodyScrollRef = useRef(props.onBodyScroll);
     const onBeforeCellCommitRef = useRef(props.onBeforeCellCommit);
     const fillOperationRef = useRef(props.fillOperation);
 
@@ -87,6 +118,27 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
     onFilterChangedRef.current = props.onFilterChanged;
     onQuickFilterFindChangedRef.current = props.onQuickFilterFindChanged;
     onHistoryChangedRef.current = props.onHistoryChanged;
+    onColumnWidthsChangedRef.current = props.onColumnWidthsChanged;
+    onEditingChangedRef.current = props.onEditingChanged;
+    onFocusChangedRef.current = props.onFocusChanged;
+    onHeaderFocusChangedRef.current = props.onHeaderFocusChanged;
+    onRowsChangedRef.current = props.onRowsChanged;
+    onPivotChangedRef.current = props.onPivotChanged;
+    onPivotColumnLimitReachedRef.current = props.onPivotColumnLimitReached;
+    onModelUpdatedRef.current = props.onModelUpdated;
+    onViewportChangedRef.current = props.onViewportChanged;
+    onCellsChangedRef.current = props.onCellsChanged;
+    onAggregateChangedRef.current = props.onAggregateChanged;
+    onOverlayShowRef.current = props.onOverlayShow;
+    onTooltipShowRef.current = props.onTooltipShow;
+    onTooltipHideRef.current = props.onTooltipHide;
+    onActionFrameChangedRef.current = props.onActionFrameChanged;
+    onKeyboardNavigationModeChangedRef.current = props.onKeyboardNavigationModeChanged;
+    onRowGroupOpenedRef.current = props.onRowGroupOpened;
+    onColumnGroupOpenedRef.current = props.onColumnGroupOpened;
+    onFirstDataRenderedRef.current = props.onFirstDataRendered;
+    onRowDataUpdatedRef.current = props.onRowDataUpdated;
+    onBodyScrollRef.current = props.onBodyScroll;
     onBeforeCellCommitRef.current = props.onBeforeCellCommit;
     fillOperationRef.current = props.fillOperation;
 
@@ -112,6 +164,27 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       options.onFilterChanged = (ev) => onFilterChangedRef.current?.(ev);
       options.onQuickFilterFindChanged = (ev) => onQuickFilterFindChangedRef.current?.(ev);
       options.onHistoryChanged = (ev) => onHistoryChangedRef.current?.(ev);
+      options.onColumnWidthsChanged = (ev) => onColumnWidthsChangedRef.current?.(ev);
+      options.onEditingChanged = (ev) => onEditingChangedRef.current?.(ev);
+      options.onFocusChanged = (ev) => onFocusChangedRef.current?.(ev);
+      options.onHeaderFocusChanged = (ev) => onHeaderFocusChangedRef.current?.(ev);
+      options.onRowsChanged = (ev) => onRowsChangedRef.current?.(ev);
+      options.onPivotChanged = (ev) => onPivotChangedRef.current?.(ev);
+      options.onPivotColumnLimitReached = (ev) => onPivotColumnLimitReachedRef.current?.(ev);
+      options.onModelUpdated = (ev) => onModelUpdatedRef.current?.(ev);
+      options.onViewportChanged = (ev) => onViewportChangedRef.current?.(ev);
+      options.onCellsChanged = (ev) => onCellsChangedRef.current?.(ev);
+      options.onAggregateChanged = (ev) => onAggregateChangedRef.current?.(ev);
+      options.onOverlayShow = (ev) => onOverlayShowRef.current?.(ev);
+      options.onTooltipShow = (ev) => onTooltipShowRef.current?.(ev);
+      options.onTooltipHide = (ev) => onTooltipHideRef.current?.(ev);
+      options.onActionFrameChanged = (ev) => onActionFrameChangedRef.current?.(ev);
+      options.onKeyboardNavigationModeChanged = (ev) => onKeyboardNavigationModeChangedRef.current?.(ev);
+      options.onRowGroupOpened = (ev) => onRowGroupOpenedRef.current?.(ev);
+      options.onColumnGroupOpened = (ev) => onColumnGroupOpenedRef.current?.(ev);
+      options.onFirstDataRendered = (ev) => onFirstDataRenderedRef.current?.(ev);
+      options.onRowDataUpdated = (ev) => onRowDataUpdatedRef.current?.(ev);
+      options.onBodyScroll = (ev) => onBodyScrollRef.current?.(ev);
       // Value-returning hook: an absent callback returns undefined, which core reads as "accept".
       options.onBeforeCellCommit = (params) => onBeforeCellCommitRef.current?.(params);
       // Same shape: an absent callback returns undefined, which the fill reads as "the grid's value".
@@ -553,4 +626,4 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       />
     );
   }
-);
+) as GridComponent;

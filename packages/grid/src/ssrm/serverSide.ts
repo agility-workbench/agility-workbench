@@ -542,7 +542,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       }
       this.storeGeneration++;
       this.rebuildFlat();
-      this.emitRows({ id: requestId } as IRowModelRequestParams, "refresh");
+      this.emitRows({ id: requestId } as IRowModelRequestParams, "refresh", true);
       // "refresh" (not "viewport") so completed blocks chain ensureViewRange and expanded
       // subtrees reload without waiting for the renderer's missing-row scan.
       this.startFill({ ...this.viewportParams(requestId), reason: "refresh" });
@@ -1127,7 +1127,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         // Only here — after a completion, on fresh segments — never mid-scan: a scan that evicted
         // could drop a block it is about to read. A fill still running keeps its window pinned.
         this.enforceBlockLimit();
-        this.emitRows(params, params.reason);
+        this.emitRows(params, params.reason, true);
         void this.reAggregate(this.latestRequestId, "aggregateModel", params.aggregateReason ?? "rows");
         // Keep filling the target window BEFORE deciding whether the overlay can hide: expansion
         // fan-out and provisional page jumps need more blocks than one response covers, and any
@@ -1342,7 +1342,11 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return any ? out : undefined;
   }
 
-  private emitRows(params: IRowModelRequestParams, reason: IRowModelRequestParams["reason"]): void {
+  private emitRows(
+    params: IRowModelRequestParams,
+    reason: IRowModelRequestParams["reason"],
+    rowSetChanged = false,
+  ): void {
     const viewOffset = this.paginate ? this.viewStartRow : 0;
     let visibleStart = 0;
     let visibleEnd = this.getViewCount();
@@ -1359,6 +1363,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       rowCount: this.flatTotal,
       visibleStart,
       visibleEnd,
+      ...(rowSetChanged ? { rowSetChanged } : {}),
     });
   }
 

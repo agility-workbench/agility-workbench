@@ -110,6 +110,8 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "noRowsMessage", grid.noRowsMessage());
   setIfDefined(options, "pivotNoValuesMessage", grid.pivotNoValuesMessage());
   setIfDefined(options, "pivotEmptyMessage", grid.pivotEmptyMessage());
+  setIfDefined(options, "localeText", grid.localeText());
+  setIfDefined(options, "getLocaleText", grid.getLocaleText());
   setIfDefined(options, "filterDebounceMs", grid.filterDebounceMs());
   setIfDefined(options, "cellFlashDuration", grid.cellFlashDuration());
   setIfDefined(options, "cellFadeDuration", grid.cellFadeDuration());

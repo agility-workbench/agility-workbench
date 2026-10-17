@@ -3,6 +3,103 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.13.0 — 2026-10-16
+
+### Features
+
+- **Every string the grid writes on its own can be translated, through a typed `localeText` map
+  or a `getLocaleText` callback.** About 410 keys cover visible text, aria-labels, tooltips,
+  placeholders, menus, filter operators, screen-reader announcements, shortcut labels and default
+  column headers. Variables are `{name}` placeholders and counts use `…One` / `…Other` key pairs;
+  the callback handles ICU messages, richer plural rules or a translation library, and wins over
+  the map. `api.getLocaleText(key, values)` lets custom components reuse the grid's strings and
+  `DEFAULT_LOCALE_TEXT` exports the English defaults, which are unchanged. Both options are
+  creation-only, and `loadingMessage` / `noRowsMessage` and the other message options still win
+  over their keys.
+- **The overlays have typed API methods: `api.showLoadingOverlay()`, `api.showNoRowsOverlay()` and
+  `api.hideOverlay()`.** They replace `dispatch({ type: "overlayShow" })`. `showNoRowsOverlay()`
+  now really shows the empty state over existing rows until the next data change; before, the
+  `"noRows"` action only recomputed the state. `hideOverlay()` keeps the empty overlay on a grid
+  that has no rows.
+- **Header labels can wrap, and the header can grow to fit them: `wrapHeaderText` and
+  `autoHeaderHeight`.** `wrapHeaderText` breaks a long label onto several lines instead of cutting
+  it off, with the sort icon, menu button and expander kept beside it. `autoHeaderHeight` grows the
+  level that label sits on to the tallest such label, never below `headerHeight`,
+  `leafHeaderHeight` or `parentHeaderHeight`; leaf and group levels grow independently and the
+  pinned sections together. The header re-measures when widths settle, columns are shown, hidden,
+  moved or pinned, labels or header heights change, the theme swaps or a web font loads. Both work
+  in `defaultColDef`.
+- **`lockPosition` keeps a column at the edge of its section.** `true` or `"left"` holds it at the
+  left, `"right"` at the right. A locked column cannot be dragged, moved from the column panel or
+  moved with `api.moveColumn`, columns dropped next to it never displace it, and
+  `applyColumnState`, saved views and `setColumnDefs` put it back at its edge. Pinning still works:
+  a locked column pinned left leads the left section. On a group child it locks within the group;
+  on a group it locks the whole group.
+- **Every grid event now has an `on*` option, a React prop and an Angular output.** Sixteen events
+  that were reachable only through `api.on` — `columnWidthsChanged`, `editingChanged`,
+  `focusChanged`, `headerFocusChanged`, `rowsChanged`, `cellsChanged`, `modelUpdated`,
+  `viewportChanged`, `aggregateChanged`, `pivotChanged`, `pivotColumnLimitReached`, `overlayShow`,
+  `tooltipShow`, `tooltipHide`, `actionFrameChanged` and `keyboardNavigationModeChanged` — gain a
+  `GridOptions` callback (`onFocusChanged`, …), a `<Grid>` prop that stays live across re-renders
+  and an `<awb-grid>` output of the event's name. The new outputs enter Angular's zone only while
+  something is bound to them, so an unused high-frequency output costs no change detection.
+- **New events: `rowGroupOpened`, `columnGroupOpened`, `firstDataRendered`, `rowDataUpdated` and
+  `bodyScroll`.** `rowGroupOpened` fires once per chevron click, keyboard command or API call with
+  only the groups whose state changed and a `"user"` / `"api"` source; `columnGroupOpened` does the
+  same for column groups, once per direction. `firstDataRendered` fires once per grid after the
+  first paint that shows a row. `rowDataUpdated` reports `setRowData`, transactions and server-side
+  block loads through its `reason`. `bodyScroll` reports every body scroll tick with both offsets
+  and which one moved. Each has an `on*` option, a React prop and an Angular output.
+- **Read the grid back through typed methods: `getColumnDefs`, `getColumn` / `getColumns`,
+  `getGridOption`, `getFocusedCell` and `isDestroyed`.** `getColumnDefs()` returns the definitions
+  with the current widths, pinning, visibility, sort, aggregates and group state written in, so
+  `setColumnDefs(getColumnDefs())` changes nothing; `getGridOption(key)` reads an option as last
+  supplied; `getFocusedCell()` pairs with a new `setFocusedCell(cell)` overload that reaches pinned
+  rows; `isDestroyed()` is true from the start of the teardown.
+- **`api.scrollTo({ topPx, leftPx })` and `api.addSparklineColumn(...)` replace the last raw
+  `dispatch` calls.** The `scrollSet` action was never handled by the core, so scrolling to an
+  offset had no working door; `addSparklineColumn` returns the new column's colId. The
+  renderer-internal actions stay untyped, and `dispatch`'s documentation says which they are.
+- **Column definitions, grid options, the grid API and their callbacks take the row type:
+  `ColDef<Trade>`, `GridOptions<Trade>`, `IGridAPI<Trade>`, `createGrid<Trade>`, `<Grid<Trade>>`
+  and `NgColDef<Trade>` / `AwbGrid<Trade>`.** The parameter defaults to `any`, so existing code
+  compiles unchanged. Once supplied it types `valueGetter` (which receives the row node,
+  `IRowNode<Trade>`), the cell class, style, tooltip, ActionFrame, editor and renderer params, the
+  row callbacks (`getRowId`, `getRowClass`, `isRowSelectable`, `isRowPinned`, …), the click events
+  and the rows the API returns (`getSelectedRows(): Trade[]`). The type comes from an explicit
+  argument or from typed `columnDefs`, never from `rowData`, so `rowData={[]}` cannot narrow a grid
+  to `never`; the published types use `NoInfer` and need TypeScript 5.4 or later. A cell
+  renderer's `data` stays `any`, because it is the row node on column cells.
+- **Groups can be expanded or collapsed by id with `api.setGroupExpanded(groupIds, expanded)`.**
+  One rebuild for the whole list, where `dispatch({ type: "groupToggleExpand" })` cost one per
+  node; unknown ids are ignored and nothing happens when every named node is already in that
+  state. The grouping guide no longer shows `dispatch`.
+- **Pinning, hiding and moving columns have a typed API: `setColumnPinned`, `setColumnsVisible`,
+  `setColumnVisible`, `moveColumn` and `moveColumns`.** No more `dispatch({ type: "columnPin" })`.
+  Each call emits what the menu, panel or drag would, with `source: "api"`, and nothing when
+  nothing changed. Hiding respects `hideable: false`. `moveColumns` places the columns as a block
+  at an index of `getColumnState()` order, hidden columns counted, clamped to each column's own
+  section, skipping `movable: false` and `lockPosition` columns.
+- **Phones and tablets can select, edit, resize, reorder, fill and open menus.** A tap selects a
+  cell, ticks a checkbox or toggles a group, a double tap edits, a long press opens the cell or
+  column menu, and the resize handle, header cells and fill handle drag by touch; pen input behaves
+  the same way. Swiping the body still scrolls natively, and the mouse events a browser fires after
+  a tap are never handled twice. The stylesheet sets `touch-action` (`manipulation` on the grid,
+  `pan-y` on header cells, `none` on the two handles) and gives handles, chevrons, checkboxes and
+  the header menu button hit targets of at least 24 px under coarse pointers. Range drag across
+  cells and hover tooltips stay mouse-only.
+- **Link, image, progress and rating cells are one word away: `cellRenderer: "link" | "image" |
+  "progress" | "rating"`.** Each built-in reads typed `cellRendererParams` (`LinkCellRendererParams`,
+  `ImageCellRendererParams`, `ProgressCellRendererParams`, `RatingCellRendererParams`) and is also
+  exported as a class. Links open in a new tab with `noopener noreferrer`, refuse `javascript:`
+  hrefs and navigate without opening the editor; images load lazily, fit the row and show their alt
+  text when broken; progress bars clamp, carry progressbar ARIA and take threshold colours through
+  a `color` hook; ratings draw half stars and, on an editable cell, write the clicked star through
+  `setCellValue` so commit hooks, undo and no-op suppression apply. Export, the clipboard and
+  tooltips keep the formatted value, the quick-filter find skips columns that show no text, and
+  five theme parameters (`linkColor`, `progressTrackColor`, `progressBarColor`, `ratingColor`,
+  `ratingEmptyColor`) colour the new cells.
+
 ## 1.12.0 — 2026-10-16
 
 ### Features

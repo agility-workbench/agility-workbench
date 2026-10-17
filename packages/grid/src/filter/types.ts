@@ -1,4 +1,5 @@
 import { IRowNode } from "../interfaces/iRowNode";
+import type { LocaleTextResolver } from "../interfaces/locale";
 import {
   FilterInputType,
   FilterOption,
@@ -79,6 +80,8 @@ export interface FilterPanelSpec {
   compare?: SetFilterComparator;
   /** Present for `filter: "tree"`: how values are placed and labelled in the tree layout. */
   tree?: SetFilterTreeSpec;
+  /** The grid's string resolver, for the panel's own labels; English defaults when absent. */
+  localeText?: LocaleTextResolver;
 }
 
 export type FilterApplyReason =

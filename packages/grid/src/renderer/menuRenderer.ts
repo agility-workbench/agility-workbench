@@ -1,5 +1,6 @@
 import { MenuItem } from "../interfaces/menuItem";
 import { isTrue } from "../misc";
+import { defaultLocaleText, type LocaleTextResolver } from "../interfaces/locale";
 import { formatChord, type ChordSpec } from "./interaction/keyChord";
 
 export interface MenuParams {
@@ -49,6 +50,8 @@ export class MenuRenderer {
      * options change shows the current truth.
      */
     private shortcutForCommand?: (command: string) => ChordSpec | null,
+    /** The grid's string resolver, for the menus' fallback accessible names. */
+    private readonly t: LocaleTextResolver = defaultLocaleText,
   ) { }
 
   open(params: MenuParams) {
@@ -96,7 +99,7 @@ export class MenuRenderer {
     } else {
       this.renderMenuItems(menuOverlay, items);
       menuOverlay.setAttribute("role", "menu");
-      menuOverlay.setAttribute("aria-label", ariaLabel ?? "Menu");
+      menuOverlay.setAttribute("aria-label", ariaLabel ?? this.t("menu"));
     }
 
     const W = 220;
@@ -270,7 +273,7 @@ export class MenuRenderer {
     this.itemsMode[level] = true;
     overlay.setAttribute("role", "menu");
     const parentLabel = parentBtnEl.querySelector(".pte-menu-item-text")?.textContent?.trim();
-    overlay.setAttribute("aria-label", parentLabel || "Submenu");
+    overlay.setAttribute("aria-label", parentLabel || this.t("submenu"));
     if (level > 0) this.setMenuParentExpanded(level - 1, parentBtnEl);
 
     const r = parentBtnEl.getBoundingClientRect();

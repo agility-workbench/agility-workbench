@@ -1,6 +1,11 @@
+import { isCompatMouseEvent } from "../interaction/touchGestures";
+
 export class BodyRowHoverRenderer {
   private handleMouseOver = (e: MouseEvent) => {
     this.root.querySelectorAll(".pte-row-hover").forEach(r => r.classList.remove("pte-row-hover"));
+    // The mouseover a tap leaves behind: there is no pointer resting on the row, so a highlight
+    // would stick until the next tap elsewhere.
+    if (isCompatMouseEvent(e)) return;
     const row = (e.target as HTMLElement)?.closest(".pte-row");
     if (!row || !this.root.contains(row)) return;
     const rowId = row.getAttribute("row-id") ?? row.getAttribute("data-row-id");

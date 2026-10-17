@@ -33,6 +33,7 @@ import { ColDef } from "./column";
 import { Column } from "../column/column";
 import { IRowNode } from "./iRowNode";
 import type { GroupCellValue } from "../core/groupCellValue";
+import type { GridLocaleKey } from "./locale";
 
 export type GridId = string;
 export type ColId = string;
@@ -100,6 +101,12 @@ export interface IGridCore {
   readonly id: string;
 
   getOptions(): Readonly<GridOptions>;
+
+  /** The creation options exactly as supplied (before defaults and normalization). */
+  getSuppliedOptions(): Readonly<GridOptions>;
+
+  /** One of the grid's user-visible strings, localized (see `resolveLocaleText` for precedence). */
+  getLocaleText(key: GridLocaleKey, variableValues?: Record<string, string | number>): string;
 
   /** Dispatch an action (from renderer and/or API). */
   dispatch(action: GridAction): void;

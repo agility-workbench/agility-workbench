@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE_TEXT, defaultLocaleText, type GridLocaleKey, type LocaleTextResolver } from "./locale";
 import type { IRowNode } from "./iRowNode";
 
 export enum AggregateType {
@@ -43,28 +44,36 @@ export function isBuiltInAggregateType(type: AggregateKind): type is AggregateTy
   return BUILT_IN_AGGREGATE_TYPES.has(type);
 }
 
-/** Display names for the built-in aggregate types, shared by the footer, the menus and the panel. */
-export const AGGREGATE_TYPE_LABELS: Readonly<Record<AggregateType, string>> = {
-  [AggregateType.COUNT]: "Count",
-  [AggregateType.DISTINCT_COUNT]: "Distinct Count",
-  [AggregateType.SUM]: "Sum",
-  [AggregateType.AVG]: "Average",
-  [AggregateType.MIN]: "Min",
-  [AggregateType.MAX]: "Max",
-  [AggregateType.MEDIAN]: "Median",
-  [AggregateType.FIRST]: "First",
-  [AggregateType.LAST]: "Last",
+/** The locale key of each built-in aggregate type's display name. */
+const AGGREGATE_TYPE_LOCALE_KEYS: Readonly<Record<AggregateType, GridLocaleKey>> = {
+  [AggregateType.COUNT]: "aggCount",
+  [AggregateType.DISTINCT_COUNT]: "aggDistinctCount",
+  [AggregateType.SUM]: "aggSum",
+  [AggregateType.AVG]: "aggAvg",
+  [AggregateType.MIN]: "aggMin",
+  [AggregateType.MAX]: "aggMax",
+  [AggregateType.MEDIAN]: "aggMedian",
+  [AggregateType.FIRST]: "aggFirst",
+  [AggregateType.LAST]: "aggLast",
 };
 
-/** How an aggregate is labelled in the UI: the built-in's display name, a custom name as given. */
-export function aggregateTypeLabel(type: AggregateKind): string {
-  return isBuiltInAggregateType(type) ? AGGREGATE_TYPE_LABELS[type] : type;
+/** English display names for the built-in aggregate types (the locale defaults). */
+export const AGGREGATE_TYPE_LABELS: Readonly<Record<AggregateType, string>> = Object.fromEntries(
+  allAggregateTypes().map(type => [type, DEFAULT_LOCALE_TEXT[AGGREGATE_TYPE_LOCALE_KEYS[type]]]),
+) as Record<AggregateType, string>;
+
+/**
+ * How an aggregate is labelled in the UI: the built-in's display name (localized through `t`), a
+ * custom name as given.
+ */
+export function aggregateTypeLabel(type: AggregateKind, t: LocaleTextResolver = defaultLocaleText): string {
+  return isBuiltInAggregateType(type) ? t(AGGREGATE_TYPE_LOCALE_KEYS[type]) : type;
 }
 
 export type AggregateScope = "none" | "page" | "all";
 
 /** What a custom aggregate function receives: the column's values over the rows it covers. */
-export interface AggregateFunctionParams {
+export interface AggregateFunctionParams<TData = any> {
   /**
    * The raw cell values (what the column's `valueGetter`/`key` reads, before formatting) in display
    * order, blanks (`null`, `undefined`, `""`) INCLUDED — unlike the built-ins, which skip blanks, a
@@ -76,7 +85,7 @@ export interface AggregateFunctionParams {
    * computed over its leaf descendants, never over child aggregates). In an export the nodes are
    * minimal and may carry only `data`.
    */
-  rows: IRowNode[];
+  rows: IRowNode<TData>[];
   /** The public colId of the aggregated column. */
   colId: string;
 }
@@ -88,7 +97,7 @@ export interface AggregateFunctionParams {
  * `null`/`undefined` for "nothing to show" (an empty cell). A function that throws yields an empty
  * cell too (the error is logged), so one bad group cannot break the whole repaint.
  */
-export type AggregateFunction = (params: AggregateFunctionParams) => unknown;
+export type AggregateFunction<TData = any> = (params: AggregateFunctionParams<TData>) => unknown;
 
 export interface AggregateModel {
   key: string;

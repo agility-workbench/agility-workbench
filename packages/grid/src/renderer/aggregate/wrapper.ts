@@ -1,6 +1,7 @@
 import { Column } from "../../column/column";
 import { AggregateKind, AggregateType, aggregateTypeLabel, isBuiltInAggregateType } from "../../interfaces/aggregate";
 import { markPresentational } from "../aria";
+import { defaultLocaleText, type LocaleTextResolver } from "../../interfaces/locale";
 import { registerRendererTooltipTarget } from "../tooltip/rendererTooltipTarget";
 
 export interface AggregateRowElements {
@@ -13,7 +14,11 @@ export interface AggregateRowElements {
   closeButton: HTMLButtonElement;
 }
 
-export function createAggregateRow(rowHeight: number, onClose: (event: MouseEvent) => void): AggregateRowElements {
+export function createAggregateRow(
+  rowHeight: number,
+  onClose: (event: MouseEvent) => void,
+  t: LocaleTextResolver = defaultLocaleText,
+): AggregateRowElements {
   const row = document.createElement("div");
   row.className = "pte-aggregate-row";
   row.style.display = "none";
@@ -36,8 +41,8 @@ export function createAggregateRow(rowHeight: number, onClose: (event: MouseEven
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.className = "pte-aggregate-close";
-  closeButton.title = "Hide aggregate row";
-  closeButton.setAttribute("aria-label", "Hide aggregate row");
+  closeButton.title = t("hideAggregateRow");
+  closeButton.setAttribute("aria-label", t("hideAggregateRow"));
   closeButton.textContent = "x";
   closeButton.addEventListener("click", onClose);
 
@@ -78,8 +83,9 @@ export class AggregateRowRenderer {
       activeType: AggregateKind,
       anchorEl: HTMLElement,
     ) => void,
+    private readonly t: LocaleTextResolver = defaultLocaleText,
   ) {
-    this.elements = createAggregateRow(rowHeight, onClose);
+    this.elements = createAggregateRow(rowHeight, onClose, t);
     root.appendChild(this.elements.row);
   }
 
@@ -129,17 +135,17 @@ export class AggregateRowRenderer {
         continue;
       }
       const aggFn = typeFor(col);
-      const label = footerAggregateLabel(aggFn);
+      const label = footerAggregateLabel(aggFn, this.t);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "pte-aggregate-menu-button";
       button.setAttribute("aria-haspopup", "menu");
-      button.setAttribute("aria-label", `Change ${col.label} aggregation. Current function: ${label}`);
+      button.setAttribute("aria-label", this.t("changeAggregation", { column: col.label, aggregate: label }));
       button.addEventListener("click", (event) => {
         event.stopPropagation();
         this.onOpenAggregateMenu?.(col, aggFn, button);
       });
-      registerRendererTooltipTarget(button, () => `${label} — change aggregation function`, button, "top");
+      registerRendererTooltipTarget(button, () => this.t("changeAggregationTooltip", { aggregate: label }), button, "top");
 
       const icon = document.createElement("span");
       icon.className = "pte-aggregate-icon";
@@ -161,10 +167,11 @@ export class AggregateRowRenderer {
  * The footer's short name for an aggregate: the built-in type capitalised ("Avg", "First"), with
  * distinct count spelled out; a custom function's name as given.
  */
-function footerAggregateLabel(type: AggregateKind): string {
+function footerAggregateLabel(type: AggregateKind, t: LocaleTextResolver): string {
   if (!isBuiltInAggregateType(type)) return type;
-  if (type === AggregateType.DISTINCT_COUNT) return aggregateTypeLabel(type);
-  return type[0].toUpperCase() + type.substring(1);
+  // The footer's one abbreviation; every other built-in reads as its display name.
+  if (type === AggregateType.AVG) return t("aggAvgShort");
+  return aggregateTypeLabel(type, t);
 }
 
 /**

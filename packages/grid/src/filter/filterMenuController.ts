@@ -1,4 +1,5 @@
 import { IRowNode } from "../interfaces/iRowNode";
+import { defaultLocaleText } from "../interfaces/locale";
 import {
   FilterApplyReason,
   IFilterController,
@@ -440,7 +441,7 @@ export class FilterController implements IFilterController {
       finalize(this.mapToOptions(values), undefined);
     });
     res.onError((err) => {
-      finalize(undefined, err?.message ?? "Failed to load values");
+      finalize(undefined, err?.message ?? (this.spec.localeText ?? defaultLocaleText)("setFilterLoadFailed"));
     });
 
     if (source.kind === "static") {
@@ -471,7 +472,7 @@ export class FilterController implements IFilterController {
 
   private mapToOptions(values: any[]): SetFilterOptions[] {
     const keyFn = this.spec.valueKey ?? defaultValueKey;
-    let options = buildSetOptions(values, keyFn, this.spec.valueLabel);
+    let options = buildSetOptions(values, keyFn, this.spec.valueLabel, this.spec.localeText);
     if (this.spec.params.showValueCounts) {
       options = addSetOptionCounts(
         options,

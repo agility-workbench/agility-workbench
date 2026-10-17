@@ -1,4 +1,5 @@
 import { ColumnType } from "../interfaces/column";
+import type { GridLocaleKey, LocaleTextResolver } from "../interfaces/locale";
 import {
   AGGREGATE_TYPE_LABELS,
   AggregateKind,
@@ -64,6 +65,8 @@ export class ColumnMenuService {
 
   constructor(private core: IGridCore) { }
 
+  private readonly t: LocaleTextResolver = (key, values) => this.core.getLocaleText(key, values);
+
   /** Wire the export target. Called by the renderer after its ExportRenderer is constructed. */
   setExportTarget(exporter: ColumnMenuExportTarget) {
     this.exporter = exporter;
@@ -80,7 +83,7 @@ export class ColumnMenuService {
     const colIDs = [...ctx.colIds];
     if (!colIDs.includes(ctx.targetColId)) colIDs.push(ctx.targetColId);
     const multi = colIDs.length > 1;
-    const s = (singular: string, plural?: string) => multi ? (plural ?? `${singular}s`) : singular;
+    const s = (one: GridLocaleKey, many: GridLocaleKey) => this.t(multi ? many : one);
 
     // A multi-column menu acts on the selection rather than on the header that opened it, and
     // pluralized labels alone are a weak signal for that. Name the scope up front so the menu can
@@ -95,20 +98,20 @@ export class ColumnMenuService {
 
     if (cap.sortable) {
       if (cap.sortDir === "asc") {
-        items.push({ id: "sortDesc", label: "Sort Descending", left: "icon-desc", command: "sort.setMany", payload: { colIDs, dir: "desc" } });
+        items.push({ id: "sortDesc", label: this.t("sortDescending"), left: "icon-desc", command: "sort.setMany", payload: { colIDs, dir: "desc" } });
       } else if (cap.sortDir === "desc") {
-        items.push({ id: "sortAsc", label: "Sort Ascending", left: "icon-asc", command: "sort.setMany", payload: { colIDs, dir: "asc" } });
+        items.push({ id: "sortAsc", label: this.t("sortAscending"), left: "icon-asc", command: "sort.setMany", payload: { colIDs, dir: "asc" } });
       } else {
         items.push(
-          { id: "sortAsc", label: "Sort Ascending", left: "icon-asc", command: "sort.setMany", payload: { colIDs, dir: "asc" } },
-          { id: "sortDesc", label: "Sort Descending", left: "icon-desc", command: "sort.setMany", payload: { colIDs, dir: "desc" } }
+          { id: "sortAsc", label: this.t("sortAscending"), left: "icon-asc", command: "sort.setMany", payload: { colIDs, dir: "asc" } },
+          { id: "sortDesc", label: this.t("sortDescending"), left: "icon-desc", command: "sort.setMany", payload: { colIDs, dir: "desc" } }
         );
       }
-      if (cap.sortDir !== null) items.push({ id: "sortClear", label: `Clear ${s("Sort")}`, left: "icon-sort-clear", command: "sort.setMany", payload: { colIDs, dir: null } });
+      if (cap.sortDir !== null) items.push({ id: "sortClear", label: s("clearSort", "clearSorts"), left: "icon-sort-clear", command: "sort.setMany", payload: { colIDs, dir: null } });
       items.push({ isSeparator: true });
     }
     if (cap.hideable) {
-      items.push({ id: "hideColumns", label: `Hide ${s("Column")}`, left: "icon-col-hide", command: "column.hideMany", payload: { colIDs } });
+      items.push({ id: "hideColumns", label: s("hideColumnMenu", "hideColumnsMenu"), left: "icon-col-hide", command: "column.hideMany", payload: { colIDs } });
       items.push({ isSeparator: true });
     }
     items.push(...this.getGroupMenuItems(colIDs, ctx.targetColId, cap.groupable, s));
@@ -120,16 +123,16 @@ export class ColumnMenuService {
       }
       const pinMenus: MenuItem[] = [];
       if (cap.pinning === "left") {
-        pinMenus.push({ id: "unpinColumns", label: `Unpin ${s("Column")}`, command: "column.pinMany", payload: { colIDs, pinned: null } });
+        pinMenus.push({ id: "unpinColumns", label: s("unpinColumn", "unpinColumns"), command: "column.pinMany", payload: { colIDs, pinned: null } });
       } else {
-        pinMenus.push({ id: "pinLeft", label: "Pin Left", command: "column.pinMany", payload: { colIDs, pinned: "left" } });
+        pinMenus.push({ id: "pinLeft", label: this.t("pinLeft"), command: "column.pinMany", payload: { colIDs, pinned: "left" } });
       }
       if (cap.pinning === "right") {
-        pinMenus.push({ id: "unpinColumns", label: `Unpin ${s("Column")}`, command: "column.pinMany", payload: { colIDs, pinned: null } });
+        pinMenus.push({ id: "unpinColumns", label: s("unpinColumn", "unpinColumns"), command: "column.pinMany", payload: { colIDs, pinned: null } });
       } else {
-        pinMenus.push({ id: "pinRight", label: "Pin Right", command: "column.pinMany", payload: { colIDs, pinned: "right" } });
+        pinMenus.push({ id: "pinRight", label: this.t("pinRight"), command: "column.pinMany", payload: { colIDs, pinned: "right" } });
       }
-      items.push({ id: "pinning", label: `Pin ${s("Column")}`, left: "icon-pin", subMenu: pinMenus });
+      items.push({ id: "pinning", label: s("pinColumnMenu", "pinColumnsMenu"), left: "icon-pin", subMenu: pinMenus });
     }
     if (cap.exportable) {
       const exportItems = this.getExportMenuItems(colIDs);
@@ -137,7 +140,7 @@ export class ColumnMenuService {
         if (items.length > 0) {
           items.push({ isSeparator: true });
         }
-        items.push({ id: "export", label: "Export", left: "icon-export", subMenu: exportItems });
+        items.push({ id: "export", label: this.t("export"), left: "icon-export", subMenu: exportItems });
       }
     }
     const panelOptions = resolveColumnPanelOptions(this.core.getOptions().columnPanel);
@@ -147,23 +150,23 @@ export class ColumnMenuService {
       }
       items.push({
         id: "manageColumns",
-        label: "Manage columns…",
+        label: this.t("manageColumns"),
         command: "columnPanel.open",
       });
     }
 
     if (ctx.colIds.length > 1) {
-      items.unshift({ id: "clearSelection", label: `Clear Selection`, disabled: true });
+      items.unshift({ id: "clearSelection", label: this.t("clearSelection"), disabled: true });
 
       if (cap.colType === ColumnType.NUMBER || cap.colType === ColumnType.CURRENCY) {
         items.push({ isSeparator: true });
         items.push({
           id: "sparklines",
-          label: "Show Sparklines",
+          label: this.t("showSparklines"),
           subMenu: [
-            { id: "sparklinesBar", label: "Bar Sparklines", command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "bar" } },
-            { id: "sparklinesLine", label: "Line Sparklines", command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "line" } },
-            { id: "sparklinesArea", label: "Area Sparklines", command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "area" } },
+            { id: "sparklinesBar", label: this.t("barSparklines"), command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "bar" } },
+            { id: "sparklinesLine", label: this.t("lineSparklines"), command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "line" } },
+            { id: "sparklinesArea", label: this.t("areaSparklines"), command: "columns.newSparklineCol", payload: { colIDs: colIDs, type: "area" } },
           ]
         });
       }
@@ -184,7 +187,7 @@ export class ColumnMenuService {
     const ctx: ColumnMenuContext = { trigger: "columnMenuButton", targetColId: colID, colIds: [colID] };
     const cap = this.summarize(ctx);
     if (!cap.aggregatable || !cap.aggType) return [];
-    const [item] = this.getAggregateMenuItems([colID], cap, (singular) => singular);
+    const [item] = this.getAggregateMenuItems([colID], cap, (one) => this.t(one));
     return (item?.subMenu ?? []).filter(sub => sub.id !== "aggClear");
   }
 
@@ -247,22 +250,22 @@ export class ColumnMenuService {
   private getAggregateMenuItems(
     colIDs: string[],
     cap: CapSummary,
-    s: (singular: string, plural?: string) => string,
+    s: (one: GridLocaleKey, many: GridLocaleKey) => string,
   ): MenuItem[] {
     if (!cap.aggregatable || !cap.aggType) return [];
-    const item: MenuItem = { id: "aggregateColumns", label: `Aggregate (${cap.aggType})`, command: "aggregate.openMany", payload: { colIDs } };
+    const item: MenuItem = { id: "aggregateColumns", label: this.t(cap.aggType === "numeric" ? "aggregateNumeric" : "aggregateString"), command: "aggregate.openMany", payload: { colIDs } };
     // Each type is an independent toggle (a checkmark marks the applied ones): a column may
     // carry several aggregates at once — each is a distinct pivot measure.
     item.subMenu = this.aggregateChoicesFor(cap).map(choice => ({
       id: choice.id,
-      label: aggregateTypeLabel(choice.type),
+      label: aggregateTypeLabel(choice.type, this.t),
       ...(choice.icon ? { left: choice.icon } : {}),
       ...(this.aggregateTypeApplied(colIDs, choice.type) ? { right: "icon-check" } : {}),
       command: "aggregate.setMany",
       payload: { colIDs, agg: choice.type },
     }));
     if (cap.aggregated) {
-      item.subMenu.push({ id: "aggClear", label: `Clear ${s("Aggregation")}`, command: "aggregate.setMany", payload: { colIDs, agg: null } });
+      item.subMenu.push({ id: "aggClear", label: s("clearAggregation", "clearAggregations"), command: "aggregate.setMany", payload: { colIDs, agg: null } });
     }
     return [item];
   }
@@ -355,7 +358,7 @@ export class ColumnMenuService {
       .filter((label): label is string => !!label);
 
     if (labels.length !== colIDs.length || labels.length > NAMED_LIMIT) {
-      return `${colIDs.length} columns`;
+      return this.t("columnsCount", { count: colIDs.length });
     }
     return labels.join(", ");
   }
@@ -444,10 +447,10 @@ export class ColumnMenuService {
   private getExportMenuItems(colIDs: string[]): MenuItem[] {
     const items: MenuItem[] = [];
     if (this.core.getOptions().allowExportAsCSV) {
-      items.push({ id: "exportCSV", label: "Export as CSV", command: "export.csv", payload: { colIDs } });
+      items.push({ id: "exportCSV", label: this.t("exportAsCsv"), command: "export.csv", payload: { colIDs } });
     }
     if (this.core.getOptions().allowExportAsExcel) {
-      items.push({ id: "exportExcel", label: "Export as Excel", command: "export.excel", payload: { colIDs } });
+      items.push({ id: "exportExcel", label: this.t("exportAsExcel"), command: "export.excel", payload: { colIDs } });
     }
     return items;
   }
@@ -456,7 +459,7 @@ export class ColumnMenuService {
     colIDs: string[],
     targetColId: string,
     groupable: boolean,
-    pluralize: (singular: string, plural?: string) => string,
+    pluralize: (one: GridLocaleKey, many: GridLocaleKey) => string,
   ): MenuItem[] {
     const groupColumns = this.core.getRowGroupColumns();
     const groupIds = groupColumns.map(col => col.instanceID);
@@ -466,7 +469,7 @@ export class ColumnMenuService {
     if (groupIds.length > 0 && targetCol?.isAutoGroupColumn()) {
       return [{
         id: "ungroupAllColumns",
-        label: `Ungroup${groupIds.length > 1 ? " All" : ""}`,
+        label: this.t(groupIds.length > 1 ? "ungroupAll" : "ungroup"),
         left: "icon-group",
         command: "group.setMany",
         payload: { colIDs: [] },
@@ -481,7 +484,7 @@ export class ColumnMenuService {
       if (remainingGroupIds.length === 0) {
         return [{
           id: "ungroupAllColumns",
-          label: groupIds.length > 1 ? "Ungroup All" : "Ungroup",
+          label: this.t(groupIds.length > 1 ? "ungroupAll" : "ungroup"),
           left: "icon-group",
           command: "group.setMany",
           payload: { colIDs: [] },
@@ -490,20 +493,20 @@ export class ColumnMenuService {
 
       const removeItem: GroupMenuItem = {
         id: "ungroupColumns",
-        label: `Remove ${pluralize("Column")} from Grouping`,
+        label: pluralize("removeColumnFromGrouping", "removeColumnsFromGrouping"),
         command: "group.setMany",
         payload: { colIDs: remainingGroupIds },
       };
       const clearItem: GroupMenuItem = {
         id: "ungroupAllColumns",
-        label: "Clear All Grouping",
+        label: this.t("clearAllGrouping"),
         command: "group.setMany",
         payload: { colIDs: [] },
       };
 
       return [{
         id: "ungroupColumnsMenu",
-        label: "Grouping",
+        label: this.t("grouping"),
         left: "icon-group",
         subMenu: [removeItem, clearItem],
       }];
@@ -512,7 +515,7 @@ export class ColumnMenuService {
     if (!groupable) return [];
     const replaceItem: GroupMenuItem = {
       id: "groupColumns",
-      label: groupIds.length > 0 ? "Replace Existing Grouping" : `Group by ${pluralize("Column")}`,
+      label: groupIds.length > 0 ? this.t("replaceExistingGrouping") : pluralize("groupByColumn", "groupByColumns"),
       command: "group.setMany",
       payload: { colIDs },
     };
@@ -528,14 +531,14 @@ export class ColumnMenuService {
     ];
     const addItem: GroupMenuItem = {
       id: "addGroupColumns",
-      label: "Add to Existing Grouping",
+      label: this.t("addToExistingGrouping"),
       command: "group.setMany",
       payload: { colIDs: nextGroupIds },
     };
 
     return [{
       id: "groupColumnsMenu",
-      label: `Group by ${pluralize("Column")}`,
+      label: pluralize("groupByColumn", "groupByColumns"),
       left: "icon-group",
       subMenu: [replaceItem, addItem],
     }];
@@ -550,7 +553,7 @@ export class ColumnMenuService {
     colIDs: string[],
     targetColId: string,
     pivotable: boolean,
-    pluralize: (singular: string, plural?: string) => string,
+    pluralize: (one: GridLocaleKey, many: GridLocaleKey) => string,
   ): MenuItem[] {
     if (!this.core.isPivotSupported()) return [];
     const pivotMode = this.core.getPivotMode();
@@ -561,7 +564,7 @@ export class ColumnMenuService {
 
     const exitItem: MenuItem = {
       id: "pivotExit",
-      label: "Exit Pivot Mode",
+      label: this.t("exitPivotMode"),
       left: "icon-pivot",
       command: "pivot.exit",
       payload: {},
@@ -582,12 +585,12 @@ export class ColumnMenuService {
       if (remainingIds.length === 0) return [exitItem];
       return [{
         id: "unpivotColumnsMenu",
-        label: "Pivot",
+        label: this.t("pivot"),
         left: "icon-pivot",
         subMenu: [
           {
             id: "unpivotColumns",
-            label: `Remove ${pluralize("Column")} from Pivot`,
+            label: pluralize("removeColumnFromPivot", "removeColumnsFromPivot"),
             command: "pivot.setMany",
             payload: { colIDs: remainingIds },
           },
@@ -598,7 +601,7 @@ export class ColumnMenuService {
 
     const replaceItem: MenuItem = {
       id: "pivotColumns",
-      label: pivotMode && pivotIds.length > 0 ? "Replace Existing Pivot" : `Pivot on ${pluralize("Column")}`,
+      label: pivotMode && pivotIds.length > 0 ? this.t("replaceExistingPivot") : pluralize("pivotOnColumn", "pivotOnColumns"),
       command: "pivot.setMany",
       payload: { colIDs: userColIDs, enable: true },
     };
@@ -609,13 +612,13 @@ export class ColumnMenuService {
 
     const addItem: MenuItem = {
       id: "addPivotColumns",
-      label: "Add to Existing Pivot",
+      label: this.t("addToExistingPivot"),
       command: "pivot.setMany",
       payload: { colIDs: [...pivotIds, ...userColIDs.filter(id => !pivoted.has(id))], enable: true },
     };
     return [{
       id: "pivotColumnsMenu",
-      label: `Pivot on ${pluralize("Column")}`,
+      label: pluralize("pivotOnColumn", "pivotOnColumns"),
       left: "icon-pivot",
       subMenu: [replaceItem, addItem],
     }];

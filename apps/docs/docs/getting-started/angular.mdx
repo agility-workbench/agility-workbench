@@ -34,6 +34,9 @@ export class ProductsComponent {
 It exposes signal inputs for core options and Angular outputs for common
 events. Angular renderers, editors, tooltips, and ActionFrames may receive
 params through an input named `params` or an `awbInit(params)` method.
+`NgColDef<Trade>` types the row in column callbacks, and a `[columnDefs]` binding
+of that type makes the template's `AwbGrid<Trade>` type its row-carrying inputs and
+outputs (see [Typing your rows](../api/column-definitions.mdx#typing-your-rows)).
 
 ## Angular components in grid slots
 
@@ -200,9 +203,14 @@ as a native DOM listener as well as to the output, so a DOM `error` event on `<a
 would reach the handler too. It is an extra notification; the grid handles the failure as it
 would without it.
 
-Outputs re-enter Angular's zone even though the grid core and its
-high-frequency listeners run outside it. For other events, subscribe with
-`api.on(eventName, handler)`.
+Every core event has an output named like the event — `(rowGroupOpened)`,
+`(firstDataRendered)`, `(rowDataUpdated)`, `(bodyScroll)`, `(focusChanged)` and the rest of
+the [callbacks table](../api/grid-options.mdx#event-callbacks) — with `(gridError)` the one
+rename. Outputs re-enter Angular's zone even though the grid core and its high-frequency
+listeners run outside it; the outputs added for the remaining events (scroll ticks, repaints,
+focus moves among them) do so only while something is bound to them, so an unused
+`(bodyScroll)` costs no change detection. `api.on(eventName, handler)` still works for any
+event.
 
 The template-reference form gives markup-level API access:
 

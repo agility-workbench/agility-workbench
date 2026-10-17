@@ -1,5 +1,5 @@
 import { Column } from "../../column/column";
-import { isBooleanToggleTarget } from "../../cellRenderers/booleanRenderer";
+import { isInteractiveCellTarget } from "../../cellRenderers/interactiveTarget";
 import { GridCore } from "../../core/core";
 import type { SubtreeSelectionState } from "../../core/selectionModel";
 import { isTrue } from "../../misc";
@@ -433,7 +433,7 @@ export class SelectionRenderer {
         id: "treeNavigationMode",
         chord: "mod+shift+space",
         scope: "grid",
-        label: "Switch tree navigation mode",
+        label: core.getLocaleText("shortcutSwitchTreeNavigationMode"),
         when: () => core.options.treeData?.enableKeyboardNavigationModeSwitch === true,
         run: () => {
           const next = core.getKeyboardNavigationMode() === "grid" ? "hierarchy" : "grid";
@@ -447,7 +447,7 @@ export class SelectionRenderer {
         id: `treeNavigate.${key}`,
         chord: `mod+${key}`,
         scope: "bodyCursor" as const,
-        label: "Tree navigation",
+        label: core.getLocaleText("shortcutTreeNavigation"),
         when: () => core.getKeyboardNavigationMode() === "hierarchy",
         run: (): boolean | void => {
           const hierarchy = core.getColumnModel().getHierarchyColumn();
@@ -467,7 +467,7 @@ export class SelectionRenderer {
         id: `checkboxToggle.${key}`,
         chord: key,
         scope: "bodyCursor" as const,
-        label: "Toggle row selection",
+        label: core.getLocaleText("shortcutToggleRowSelection"),
         when: utilityActivation(col => col.isSelectionCheckboxColumn()),
         run: () => {
           core.dispatch({
@@ -487,7 +487,7 @@ export class SelectionRenderer {
         id: `rowNumberSelect.${key}`,
         chord: { key, mod: "any" as const, shift: "any" as const },
         scope: "bodyCursor" as const,
-        label: "Select row",
+        label: core.getLocaleText("shortcutSelectRow"),
         when: () => !!core.options.rowSelection
           && utilityActivation(col => col.isRowNumberColumn())(),
         run: (e: KeyboardEvent) => {
@@ -508,7 +508,7 @@ export class SelectionRenderer {
         id: "openActionFrame",
         chord: "shift+f2",
         scope: "bodyCursor",
-        label: "Open the cell's action frame",
+        label: core.getLocaleText("shortcutOpenActionFrame"),
         run: () => {
           const cell = this.activeCellRef();
           if (cell) core.dispatch({ type: "actionFrameOpen", cell, source: "keyboard" });
@@ -521,7 +521,7 @@ export class SelectionRenderer {
         id: `editStart.${key}`,
         chord: key,
         scope: "bodyCursor" as const,
-        label: "Edit cell",
+        label: core.getLocaleText("shortcutEditCell"),
         // Disabled by suppressKeyboardEdit, which declines the chord rather than consuming it.
         when: () => !core.options.suppressKeyboardEdit,
         run: (): boolean | void => {
@@ -535,7 +535,7 @@ export class SelectionRenderer {
         id: "selectAll",
         chord: "mod+a",
         scope: "bodyCursor",
-        label: "Select all cells",
+        label: core.getLocaleText("shortcutSelectAllCells"),
         run: () => core.dispatch({ type: "selectAll" }),
       },
       // `command` ties each binding to the body-menu item that performs the same action, so the
@@ -544,7 +544,7 @@ export class SelectionRenderer {
         id: "copy",
         chord: "mod+c",
         scope: "bodyCursor",
-        label: "Copy",
+        label: core.getLocaleText("shortcutCopy"),
         command: "body.copy",
         run: () => this.params.clipboard().copy(),
       },
@@ -552,7 +552,7 @@ export class SelectionRenderer {
         id: "cut",
         chord: "mod+x",
         scope: "bodyCursor",
-        label: "Cut",
+        label: core.getLocaleText("shortcutCut"),
         command: "body.cut",
         run: () => this.params.clipboard().cut(),
       },
@@ -560,7 +560,7 @@ export class SelectionRenderer {
         id: "paste",
         chord: "mod+v",
         scope: "bodyCursor",
-        label: "Paste",
+        label: core.getLocaleText("shortcutPaste"),
         command: "body.paste",
         // Leave the key to the browser so it fires a `paste` event at the root, which carries the
         // clipboard text without the async-clipboard permission; the clipboard renderer falls
@@ -575,7 +575,7 @@ export class SelectionRenderer {
         id: "fillDown",
         chord: "mod+d",
         scope: "bodyCursor",
-        label: "Fill down",
+        label: core.getLocaleText("shortcutFillDown"),
         command: "body.fillDown",
         when: () => this.params.fill().options()?.direction !== "x" && this.params.fill().isEnabled(),
         // The controller reports a count for the API; a binding's run() answers boolean | void.
@@ -585,7 +585,7 @@ export class SelectionRenderer {
         id: "fillRight",
         chord: "mod+r",
         scope: "bodyCursor",
-        label: "Fill right",
+        label: core.getLocaleText("shortcutFillRight"),
         command: "body.fillRight",
         when: () => this.params.fill().options()?.direction !== "y" && this.params.fill().isEnabled(),
         run: () => { this.params.fill().fillRight(); },
@@ -594,7 +594,7 @@ export class SelectionRenderer {
         id: "undo",
         chord: "mod+z",
         scope: "bodyCursor",
-        label: "Undo",
+        label: core.getLocaleText("shortcutUndo"),
         run: () => core.dispatch({ type: "undo" }),
       },
       // Shift is the redo modifier, so the two Z chords are separate bindings rather than one that
@@ -603,7 +603,7 @@ export class SelectionRenderer {
         id: `redo.${index}`,
         chord,
         scope: "bodyCursor" as const,
-        label: "Redo",
+        label: core.getLocaleText("shortcutRedo"),
         run: () => core.dispatch({ type: "redo" }),
       })),
 
@@ -613,7 +613,7 @@ export class SelectionRenderer {
         id: `clearContents.${key}`,
         chord: key,
         scope: "bodyCursor" as const,
-        label: "Clear cell contents",
+        label: core.getLocaleText("shortcutClearCells"),
         run: () => this.params.clipboard().clearContents(),
       })),
 
@@ -665,7 +665,7 @@ export class SelectionRenderer {
         id: "enterHeader",
         chord: "arrowup",
         scope: "bodyCursor",
-        label: "Move to the column header",
+        label: core.getLocaleText("shortcutMoveToHeader"),
         run: (): boolean | void => {
           if (!core.tryEnterHeaderFromTop()) return false;
         },
@@ -678,7 +678,7 @@ export class SelectionRenderer {
         id: `navigate.${key}`,
         chord: { key, mod: "any" as const, shift: "any" as const },
         scope: "bodyCursor" as const,
-        label: `Move ${dir}`,
+        label: core.getLocaleText(({ up: "shortcutMoveUp", down: "shortcutMoveDown", left: "shortcutMoveLeft", right: "shortcutMoveRight" } as const)[dir]),
         run: (e: KeyboardEvent) => core.dispatch({
           type: "navigate",
           dir,
@@ -693,7 +693,7 @@ export class SelectionRenderer {
         id: "typeToEdit",
         pattern: (e: KeyboardEvent) => !hasMod(e) && !e.altKey && isPrintableKey(e.key),
         scope: "bodyCursor",
-        label: "Start editing by typing",
+        label: core.getLocaleText("shortcutTypeToEdit"),
         when: () => !core.options.suppressKeyboardEdit && !core.options.suppressTypeToEdit,
         run: (e: KeyboardEvent): boolean | void => {
           const cell = this.activeCellRef();
@@ -725,7 +725,7 @@ export class SelectionRenderer {
         ?? rowEl?.getAttribute("data-group-id");
       if (groupId) {
         e.preventDefault();
-        this.params.core.dispatch({ type: "groupToggleExpand", groupId });
+        this.params.core.dispatch({ type: "groupToggleExpand", groupId, source: "user" });
         // The chevron consumes mousedown so it does not start a drag/range gesture. For tree data,
         // still make its hierarchy cell the active keyboard target after the synchronous reflow;
         // otherwise the subsequent mode-toggle / hierarchy keys are sent outside the grid or act
@@ -822,8 +822,9 @@ export class SelectionRenderer {
 
     // Single-click editing: the same click that selects the cell also opens the editor. Core no-ops
     // for non-editable columns / group rows, so this is safe to always dispatch when enabled.
-    // An editable boolean checkbox toggles on its own click; opening the editor would replace it.
-    if (this.params.core.options.editTrigger === "singleClick" && !isBooleanToggleTarget(e.target)) {
+    // An editable boolean checkbox, a link or an editable rating star handles its own click;
+    // opening the editor would replace it before the click lands.
+    if (this.params.core.options.editTrigger === "singleClick" && !isInteractiveCellTarget(e.target)) {
       const cell = this.cellRefFromLocation(location.viewIdx, location.colIdx, location.rowPinned);
       if (cell) this.params.core.dispatch({ type: "editStart", cell, source: "mouse" });
     }

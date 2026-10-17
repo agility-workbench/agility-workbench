@@ -159,7 +159,7 @@ export class BodyMenuOpener {
       parentId: null,
       parentEl: null,
       position: "bottom-left",
-      ariaLabel: "Cell menu",
+      ariaLabel: this.params.core.getLocaleText("cellMenu"),
       onItemClick: session.onItemClick,
       onClose: session.onClose,
     });

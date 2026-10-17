@@ -53,10 +53,11 @@ import { IServerSideDataSource } from "../interfaces/serverSide";
 import { SelectionModel, SubtreeSelectionState } from "./selectionModel";
 import { CellEdit, GridHistoryState, HistoryEntry, HistoryModel } from "./historyModel";
 import { CellPos, CellRef, RowSelectionState, SelectionRange, SelectionSnapshot } from "../interfaces/selection";
-import { ColumnChangeSource, GridEventColumnsChangedParams, GridEventFocusChangedParams } from "../events/events";
+import { ColumnChangeSource, GridEventColumnsChangedParams, GridEventFocusChangedParams, RowDataUpdatedReason } from "../events/events";
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
 import { resolveThemeHeaderHeightPx, resolveThemeRowHeightPx } from "../theme/theme";
+import { createLocaleTextResolver, type GridLocaleKey, resolveLocaleText } from "../interfaces/locale";
 
 interface AppliedRowTransaction {
   result: RowTransactionResult;
@@ -159,6 +160,9 @@ export class GridCore implements IGridCore {
   readonly id: string;
 
   readonly options: InternalGridOptions;
+  // The creation options exactly as supplied (a shallow copy), for `api.getGridOption`: `options`
+  // holds resolved values, some in an internal shape (`rowSelection` is flattened to a boolean).
+  private readonly suppliedOptions: Readonly<GridOptions>;
 
   private columnModel: ColumnModel;
 
@@ -271,6 +275,8 @@ export class GridCore implements IGridCore {
   private historyScopeEdits: CellEdit[] = [];
   // Failed row-model requests so far; see getRowRequestFailureCount.
   private rowRequestFailureCount = 0;
+  // Latched by the first body paint that shows a row; `firstDataRendered` fires once per grid.
+  private firstDataRenderedEmitted = false;
   // Server-side store generation the edit history was last reconciled against.
   private seenServerSideStoreGeneration = 0;
 
@@ -283,6 +289,7 @@ export class GridCore implements IGridCore {
 
   constructor(private measureCtx: ITextMeasurer, options: GridOptions = {}) {
     this.themeHeaderHeight = resolveThemeHeaderHeightPx(options.theme);
+    this.suppliedOptions = { ...options };
     this.options = this.initializeGridOptions(options);
     this.explicitHeaderHeights = {
       headerHeight: options.headerHeight,
@@ -307,12 +314,12 @@ export class GridCore implements IGridCore {
     this.find = new QuickFilterFind({
       getRowModel: () => this.rowModel,
       // The cells a find can highlight: visible data leaves. Internal columns (row numbers,
-      // checkboxes, the auto-group column), any tree column and a BOOLEAN column drawing the
-      // default checkbox are excluded because their cells do not render `formatValue` — the cell
-      // renderer draws a checkbox, a row number or a hierarchy label there, so matching their value
-      // would highlight text the user cannot see.
+      // checkboxes, the auto-group column), any tree column and a column whose built-in renderer
+      // draws no text (checkbox, image, rating, bare progress bar) are excluded because their cells
+      // do not render `formatValue` — the cell shows a checkbox, a row number, a hierarchy label or
+      // a picture there, so matching their value would highlight text the user cannot see.
       getColumns: () => this.columnModel.getLeaves()
-        .filter(col => !col.isInternal() && !col.isTreeColumn() && !col.usesDefaultCheckboxRenderer()),
+        .filter(col => !col.isInternal() && !col.isTreeColumn() && !col.rendersNoText()),
       canFind: () => this.isFindAvailable(),
     });
     this.selectionModel = new SelectionModel({
@@ -371,6 +378,27 @@ export class GridCore implements IGridCore {
     this.on("filterChanged", (ev) => o.onFilterChanged?.(ev));
     this.on("quickFilterFindChanged", (ev) => o.onQuickFilterFindChanged?.(ev));
     this.on("historyChanged", (ev) => o.onHistoryChanged?.(ev));
+    this.on("columnWidthsChanged", (ev) => o.onColumnWidthsChanged?.(ev));
+    this.on("editingChanged", (ev) => o.onEditingChanged?.(ev));
+    this.on("focusChanged", (ev) => o.onFocusChanged?.(ev));
+    this.on("headerFocusChanged", (ev) => o.onHeaderFocusChanged?.(ev));
+    this.on("rowsChanged", (ev) => o.onRowsChanged?.(ev));
+    this.on("pivotChanged", (ev) => o.onPivotChanged?.(ev));
+    this.on("pivotColumnLimitReached", (ev) => o.onPivotColumnLimitReached?.(ev));
+    this.on("modelUpdated", (ev) => o.onModelUpdated?.(ev));
+    this.on("viewportChanged", (ev) => o.onViewportChanged?.(ev));
+    this.on("cellsChanged", (ev) => o.onCellsChanged?.(ev));
+    this.on("aggregateChanged", (ev) => o.onAggregateChanged?.(ev));
+    this.on("overlayShow", (ev) => o.onOverlayShow?.(ev));
+    this.on("tooltipShow", (ev) => o.onTooltipShow?.(ev));
+    this.on("tooltipHide", (ev) => o.onTooltipHide?.(ev));
+    this.on("actionFrameChanged", (ev) => o.onActionFrameChanged?.(ev));
+    this.on("keyboardNavigationModeChanged", (ev) => o.onKeyboardNavigationModeChanged?.(ev));
+    this.on("rowGroupOpened", (ev) => o.onRowGroupOpened?.(ev));
+    this.on("columnGroupOpened", (ev) => o.onColumnGroupOpened?.(ev));
+    this.on("firstDataRendered", (ev) => o.onFirstDataRendered?.(ev));
+    this.on("rowDataUpdated", (ev) => o.onRowDataUpdated?.(ev));
+    this.on("bodyScroll", (ev) => o.onBodyScroll?.(ev));
   }
 
   private initializeGridOptions(options: GridOptions): InternalGridOptions {
@@ -411,7 +439,7 @@ export class GridCore implements IGridCore {
       allowExportAsCSV: options.allowExportAsCSV ?? true,
       allowExportAsExcel: options.allowExportAsExcel ?? true,
       pagination: isTrue(options.pagination),
-      paginationControls: resolvePaginationControlsOptions(options.paginationControls),
+      paginationControls: resolvePaginationControlsOptions(options.paginationControls, createLocaleTextResolver(options)),
       rowNumbers: isTrue(options.rowNumbers),
       rowHover: options.rowHover ?? true,
       columnHover: isTrue(options.columnHover),
@@ -434,6 +462,27 @@ export class GridCore implements IGridCore {
       onFilterChanged: options.onFilterChanged,
       onQuickFilterFindChanged: options.onQuickFilterFindChanged,
       onHistoryChanged: options.onHistoryChanged,
+      onColumnWidthsChanged: options.onColumnWidthsChanged,
+      onEditingChanged: options.onEditingChanged,
+      onFocusChanged: options.onFocusChanged,
+      onHeaderFocusChanged: options.onHeaderFocusChanged,
+      onRowsChanged: options.onRowsChanged,
+      onPivotChanged: options.onPivotChanged,
+      onPivotColumnLimitReached: options.onPivotColumnLimitReached,
+      onModelUpdated: options.onModelUpdated,
+      onViewportChanged: options.onViewportChanged,
+      onCellsChanged: options.onCellsChanged,
+      onAggregateChanged: options.onAggregateChanged,
+      onOverlayShow: options.onOverlayShow,
+      onTooltipShow: options.onTooltipShow,
+      onTooltipHide: options.onTooltipHide,
+      onActionFrameChanged: options.onActionFrameChanged,
+      onKeyboardNavigationModeChanged: options.onKeyboardNavigationModeChanged,
+      onRowGroupOpened: options.onRowGroupOpened,
+      onColumnGroupOpened: options.onColumnGroupOpened,
+      onFirstDataRendered: options.onFirstDataRendered,
+      onRowDataUpdated: options.onRowDataUpdated,
+      onBodyScroll: options.onBodyScroll,
       ariaLabel: options.ariaLabel,
       ariaLabelledBy: options.ariaLabelledBy,
       highlightActiveCell: isTrue(options.highlightActiveCell),
@@ -475,7 +524,7 @@ export class GridCore implements IGridCore {
       getGroupChildCount: options.getGroupChildCount,
       groupChildCount: options.groupChildCount ?? true, // true (row count) | false | getter
       paginationUnknownTotalTooltip: options.paginationUnknownTotalTooltip
-        ?? "More rows may exist on the server; the total updates as they load",
+        ?? resolveLocaleText(options, "paginationUnknownTotal"),
       autosizeColumnsOnDataChange: options.autosizeColumnsOnDataChange ?? (options.rowModelType === "serverSide"),
       clearSelectionOnBodyClick: options.clearSelectionOnBodyClick ?? true,
       undoLimit: options.undoLimit != null && options.undoLimit >= 0 ? options.undoLimit : 100,
@@ -521,12 +570,12 @@ export class GridCore implements IGridCore {
       toolbar: options.toolbar ?? {},
       savedViews: options.savedViews,
       sheets: options.sheets,
-      loadingMessage: options.loadingMessage ?? "Loading data...",
-      noRowsMessage: options.noRowsMessage ?? "No rows to show",
+      loadingMessage: options.loadingMessage ?? resolveLocaleText(options, "loading"),
+      noRowsMessage: options.noRowsMessage ?? resolveLocaleText(options, "noRows"),
       pivotNoValuesMessage:
-        options.pivotNoValuesMessage ?? "Choose Aggregate on a column to add values",
+        options.pivotNoValuesMessage ?? resolveLocaleText(options, "pivotNoValues"),
       pivotEmptyMessage:
-        options.pivotEmptyMessage ?? "Add row groups, column labels or values to build the pivot",
+        options.pivotEmptyMessage ?? resolveLocaleText(options, "pivotEmpty"),
       filterDebounceMs: options.filterDebounceMs != null && options.filterDebounceMs >= 0 ? options.filterDebounceMs : 300,
       cellFlashDuration: options.cellFlashDuration != null && options.cellFlashDuration >= 0 ? options.cellFlashDuration : 500,
       cellFadeDuration: options.cellFadeDuration != null && options.cellFadeDuration >= 0 ? options.cellFadeDuration : 1000,
@@ -534,11 +583,25 @@ export class GridCore implements IGridCore {
       theme: options.theme,
       suppressStyleInjection: options.suppressStyleInjection ?? false,
       styleNonce: options.styleNonce,
+      localeText: options.localeText,
+      getLocaleText: options.getLocaleText,
     };
   }
 
   getOptions(): Readonly<GridOptions> {
     return this.options;
+  }
+
+  getSuppliedOptions(): Readonly<GridOptions> {
+    return this.suppliedOptions;
+  }
+
+  /**
+   * One of the grid's user-visible strings: the `getLocaleText` callback, else the `localeText`
+   * entry, else the English default, with `{placeholder}`s filled from `variableValues`.
+   */
+  getLocaleText(key: GridLocaleKey, variableValues?: Record<string, string | number>): string {
+    return resolveLocaleText(this.options, key, variableValues);
   }
 
   getSnapshot(): GridSnapshot {
@@ -1068,6 +1131,12 @@ export class GridCore implements IGridCore {
       changedColInstanceIds: groups.map(col => col.instanceID),
     });
     this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+    // One event per direction: a state restore can open some groups and close others at once.
+    const opened = groups.filter(col => col.groupExpandState === "open").map(col => col.colId);
+    const closed = groups.filter(col => col.groupExpandState !== "open").map(col => col.colId);
+    const source = this.columnChangeSource;
+    if (opened.length > 0) this.emit("columnGroupOpened", { groupIds: opened, expanded: true, source });
+    if (closed.length > 0) this.emit("columnGroupOpened", { groupIds: closed, expanded: false, source });
   }
 
   autosizeColumn(colID: string): string[] {
@@ -1202,6 +1271,7 @@ export class GridCore implements IGridCore {
         const diff = this.rowModel.diffRows?.(rows);
         if (diff) {
           this.applyRowDataDiff(diff);
+          this.emitRowDataUpdated("rowData");
           return;
         }
       }
@@ -1218,9 +1288,15 @@ export class GridCore implements IGridCore {
       this.identifyComparatorsFromCurrentRows();
       const range = this.resetPageBlocks();
       this.applyRowModelRequest(() => this.createRowModelRequest("refresh", range, this.getInitialServerSideLoadRange()));
+      this.emitRowDataUpdated("rowData");
     } finally {
       for (const call of pendingCalls) call.resolve(call.result);
     }
+  }
+
+  // After the view has been re-derived, so a handler reads current counts.
+  private emitRowDataUpdated(reason: RowDataUpdatedReason): void {
+    this.emit("rowDataUpdated", { reason, rowCount: this.rowModel.getViewTotalCount() });
   }
 
   /**
@@ -1335,6 +1411,7 @@ export class GridCore implements IGridCore {
         colInstanceIds: pair.colInstanceIds,
       });
     }
+    this.emitRowDataUpdated("transaction");
   }
 
   private accumulateRowTransaction(applied: AppliedRowTransaction): void {
@@ -1738,18 +1815,29 @@ export class GridCore implements IGridCore {
 
   // Expand or collapse a single group node, then re-flatten the grouped view (no filter/sort/tree
   // rebuild). When `expanded` is omitted the node's state is toggled.
-  toggleGroupExpand(groupId: string, expanded?: boolean): void {
-    this.applyGroupExpansion({ groupId, expanded });
+  toggleGroupExpand(groupId: string, expanded?: boolean, source: "user" | "api" = "api"): void {
+    this.applyGroupExpansion({ groupId, expanded }, source);
   }
 
   // Expand/collapse many group nodes at the cost of a single toggle: one row-model re-flatten,
   // one selection reconcile, one repaint. `groupIds` omitted = every group node.
-  setGroupsExpanded(expanded: boolean, groupIds?: string[]): void {
-    this.applyGroupExpansion(groupIds ? { groupIds, expanded } : { all: true, expanded });
+  setGroupsExpanded(expanded: boolean, groupIds?: string[], source: "user" | "api" = "api"): void {
+    this.applyGroupExpansion(groupIds ? { groupIds, expanded } : { all: true, expanded }, source);
   }
 
-  private applyGroupExpansion(groupExpansion: NonNullable<IRowModelRequestParams["groupExpansion"]>): void {
+  private applyGroupExpansion(
+    groupExpansion: NonNullable<IRowModelRequestParams["groupExpansion"]>,
+    source: "user" | "api",
+  ): void {
     if (this.groupColumns.length === 0 && !this.options.treeData) return;
+    // The targets' state before the request, so `rowGroupOpened` can name only the nodes that
+    // moved — non-expandable groups, unknown ids and nodes already in the state are left out.
+    const before = new Map<string, boolean>();
+    const targets = groupExpansion.all
+      ? this.rowModel.getGroupNodes()
+      : (groupExpansion.groupIds ?? (groupExpansion.groupId != null ? [groupExpansion.groupId] : []))
+        .map(id => this.rowModel.getRowNode(id));
+    for (const node of targets) if (node) before.set(node.id, !!node.isExpanded);
     this.applyRowModelRequest(() => this.createRowModelRequest(
       "group",
       { start: this.pageStartIdx, end: this.pageEndIdx },
@@ -1763,6 +1851,17 @@ export class GridCore implements IGridCore {
     this.clearSelectionForColumnChange();
     this.emit("rowsChanged", { reason: "group", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
     this.emit("paginationChanged", this.getPaginationInfo());
+    const groupIds: string[] = [];
+    let expanded = false;
+    for (const [id, was] of before) {
+      const now = !!this.rowModel.getRowNode(id)?.isExpanded;
+      if (now === was) continue;
+      groupIds.push(id);
+      expanded = now;
+    }
+    // One request moves every target the same way (a single toggle moves one node), so the last
+    // changed node's state is the event's.
+    if (groupIds.length > 0) this.emit("rowGroupOpened", { groupIds, expanded, source });
   }
 
   getRowGroupColumns(): Column[] {
@@ -2323,7 +2422,8 @@ export class GridCore implements IGridCore {
     if (command === "expand" || (command === "collapse" && expandable && node.isExpanded)) {
       const targetExpanded = command === "expand";
       if (!expandable || node.isExpanded === targetExpanded) return;
-      this.toggleGroupExpand(node.id, targetExpanded);
+      // Only the tree-data keyboard shortcuts dispatch treeNavigate.
+      this.toggleGroupExpand(node.id, targetExpanded, "user");
 
       // toggleGroupExpand reconciles selection because the visible row set changed. Restore focus
       // to the same hierarchy node, whose page-local index may have changed after page clamping.
@@ -2945,7 +3045,7 @@ export class GridCore implements IGridCore {
   private getGroupTotalRowLabel(node: IRowNode): string {
     const grandTotal = !!node.grandTotal;
     const groupLabel = grandTotal || !node.groupNode ? "" : groupRowLabel(node.groupNode, null);
-    const defaultLabel = grandTotal ? "Grand Total" : `Total ${groupLabel}`;
+    const defaultLabel = grandTotal ? this.getLocaleText("grandTotal") : this.getLocaleText("groupTotal", { group: groupLabel });
     const custom = this.options.groupTotalRowLabel;
     if (!custom) return defaultLabel;
     const label = custom({
@@ -4096,6 +4196,16 @@ export class GridCore implements IGridCore {
         }
         this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
         break;
+      case "columnsMove": {
+        // The batch form of columnMove: the same events, once, and none when nothing moved.
+        const movedIds = this.columnModel.moveColumnsToIndex(action.colIds, action.toIndex);
+        if (movedIds.length === 0) break;
+        this.clearSelectionForColumnChange();
+        const pair = this.eventColIds(movedIds.map(id => this.columnModel.getById(id)));
+        this.emitColumnsChanged({ reason: "order", changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds });
+        this.emit("rowsChanged", { reason: "order", firstRowIndex: 0, lastRowIndex: this.rowModel.getViewCount() - 1 });
+        break;
+      }
       case "addSparklineColumn": {
         const colId = action.newColId || `sparkline_${crypto.randomUUID()}`;
         const selectedColumns = action.colIds
@@ -4126,7 +4236,7 @@ export class GridCore implements IGridCore {
 
         const colDef: ColDef = {
           colId,
-          label: "Sparkline",
+          label: this.getLocaleText("sparklineColumn"),
           width: 120,
           sortable: false,
           filter: false,
@@ -4191,10 +4301,10 @@ export class GridCore implements IGridCore {
         this.setPivotColumnOrder(action.order);
         break;
       case "groupToggleExpand":
-        this.toggleGroupExpand(action.groupId, action.expanded);
+        this.toggleGroupExpand(action.groupId, action.expanded, action.source ?? "api");
         break;
       case "groupSetExpanded":
-        this.setGroupsExpanded(action.expanded, action.groupIds);
+        this.setGroupsExpanded(action.expanded, action.groupIds, action.source ?? "api");
         break;
       case "keyboardNavigationModeSet":
         this.setKeyboardNavigationMode(action.mode, action.source);
@@ -4829,6 +4939,7 @@ export class GridCore implements IGridCore {
       if (rowCount > 0 && pageSize > 0 && this.pageStartIdx >= rowCount) {
         const lastPageIndex = Math.max(Math.ceil(rowCount / pageSize) - 1, 0);
         this.applyPagination(lastPageIndex, pageSize, true);
+        if (params.rowSetChanged) this.emitRowDataUpdated("serverSide");
         return;
       }
     }
@@ -4856,6 +4967,7 @@ export class GridCore implements IGridCore {
       rowCount: params.rowCount,
     });
     this.emit("paginationChanged", this.getPaginationInfo());
+    if (params.rowSetChanged) this.emitRowDataUpdated("serverSide");
   }
 
   onAggregates(_id: number, params: IRowModelOnAggregatesParams) {
@@ -4897,6 +5009,22 @@ export class GridCore implements IGridCore {
   noteRenderedRowRange(start: number, end: number): void {
     this.rowModel.setRenderedRange?.({ start, end });
   }
+
+  /**
+   * The body renderer painted `rowCount` loaded rows. The first call with any emits
+   * `firstDataRendered` — once per grid, deferred past the dispatch in progress so a handler sees
+   * the settled state (and may call the API) rather than running mid-repaint.
+   */
+  noteBodyRowsPainted(rowCount: number): void {
+    if (this.firstDataRenderedEmitted || rowCount === 0 || this.destroyed) return;
+    this.firstDataRenderedEmitted = true;
+    this.afterDispatch(this.emitFirstDataRendered);
+  }
+
+  private readonly emitFirstDataRendered = (): void => {
+    if (this.destroyed) return;
+    this.emit("firstDataRendered", { rowCount: this.rowModel.getViewTotalCount() });
+  };
 
   /**
    * How many row-model requests have failed (`onError`) on this grid. The renderer compares it

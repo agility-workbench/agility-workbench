@@ -25,8 +25,29 @@ import type {
   GridEventRowClickedParams,
   GridEventRowDoubleClickedParams,
   GridEventSelectionChangedParams,
+  GridEventActionFrameParams,
+  GridEventAggregateChangedParams,
+  GridEventBodyScrollParams,
+  GridEventCellsChangedParams,
+  GridEventColumnGroupOpenedParams,
+  GridEventColumnWidthsChangedParams,
+  GridEventEditingChangedParams,
+  GridEventFirstDataRenderedParams,
+  GridEventFocusChangedParams,
+  GridEventHeaderFocusChangedParams,
+  GridEventKeyboardNavigationModeChangedParams,
+  GridEventModelUpdatedParams,
+  GridEventOverlayShowParams,
+  GridEventPivotChangedParams,
+  GridEventPivotColumnLimitReachedParams,
+  GridEventRowDataUpdatedParams,
+  GridEventRowGroupOpenedParams,
+  GridEventRowsChangedParams,
+  GridEventTooltipParams,
+  GridEventViewportChangedParams,
 } from "../events/events";
 import type { SavedViewsOptions, SheetsOptions } from "./gridView";
+import { DEFAULT_LOCALE_TEXT, defaultLocaleText, type GetLocaleText, type GridLocaleText, type LocaleTextResolver } from "./locale";
 
 /**
  * Payload for the `onCellValueChanged` option: a cell's stored value changed. Covers every write
@@ -63,14 +84,14 @@ export const REJECT: unique symbol = Symbol("agility-workbench-grid/reject-commi
 export type CellCommitSource = Exclude<CellValueChangeSource, "undo" | "redo">;
 
 /** Payload for the `onBeforeCellCommit` option. Mirrors {@link CellValueChangedParams}. */
-export interface BeforeCellCommitParams {
+export interface BeforeCellCommitParams<TData = any> {
   rowId: string;
   /** The column's public `ColDef.colId`. */
   colId: string;
   /** The column's internal instance id. */
   colInstanceId?: string;
   /** The row's underlying data object (not yet mutated). */
-  data: unknown;
+  data: TData;
   /** The proposed value in its stored form — the column's `valueParser` has already run. */
   value: unknown;
   /** The cell's current stored value. */
@@ -99,9 +120,9 @@ export interface SortChangedParams {
 }
 
 /** Context passed to the row-level styling callbacks (`getRowClass` / `getRowStyle`). */
-export interface RowClassParams {
-  /** The row's underlying data object. */
-  data: any;
+export interface RowClassParams<TData = any> {
+  /** The row's underlying data object (a placeholder on a client-side group row). */
+  data: TData;
   /** The row's stable id. */
   rowId: string;
   /** The row's current view index. */
@@ -109,21 +130,21 @@ export interface RowClassParams {
   /** Whether this is a group (summary) row. */
   isGroup: boolean;
   /** The full row node. */
-  node: IRowNode;
+  node: IRowNode<TData>;
 }
 
 /**
  * Returns extra CSS class name(s) to apply to a row. May return a single class, a space-separated
  * string, an array of classes, or a falsy value for none. Recomputed as rows scroll into view.
  */
-export type GetRowClass = (params: RowClassParams) => string | string[] | null | undefined;
+export type GetRowClass<TData = any> = (params: RowClassParams<TData>) => string | string[] | null | undefined;
 
 /**
  * Returns inline styles to apply to a row (camelCase CSS properties), or a falsy value for none.
  * Recomputed as rows scroll into view. Only properties returned are managed by the grid; a property
  * that stops being returned is cleared on the next repaint.
  */
-export type GetRowStyle = (params: RowClassParams) => Partial<CSSStyleDeclaration> | null | undefined;
+export type GetRowStyle<TData = any> = (params: RowClassParams<TData>) => Partial<CSSStyleDeclaration> | null | undefined;
 
 /** Tooltip defaults supplied by {@link RowPresentation} for every cell in one row. */
 export interface RowTooltipPresentation {
@@ -170,13 +191,13 @@ export interface RowPresentation {
   metadata?: Record<string, unknown>;
 }
 
-export interface RowPresentationParams extends RowClassParams {
+export interface RowPresentationParams<TData = any> extends RowClassParams<TData> {
   /** Set for application-pinned rows; sticky group mirrors remain ordinary body rows. */
   rowPinned?: RowPinnedPosition;
 }
 
-export type GetRowPresentation = (
-  params: RowPresentationParams,
+export type GetRowPresentation<TData = any> = (
+  params: RowPresentationParams<TData>,
 ) => RowPresentation | null | undefined;
 
 /**
@@ -195,7 +216,7 @@ export type BodyContextMenuGetter = (params: { ctx: BodyMenuContext; items: Menu
 
 /** What a `groupChildCount` function is handed for one group row. */
 // Extends the `groupValueGetter` params so the two group-row callbacks cannot drift apart.
-export interface GroupChildCountParams extends GroupValueGetterParams {
+export interface GroupChildCountParams<TData = any> extends GroupValueGetterParams<TData> {
   /**
    * The count the grid would show by default: the group's leaf-descendant row count on the
    * client-side row model, `getGroupChildCount`'s result on the server-side one, or undefined when
@@ -208,18 +229,18 @@ export interface GroupChildCountParams extends GroupValueGetterParams {
  * Returns what a group row shows in the parentheses after its label, or null/undefined to show
  * no count for that group. A number or a string ("12.5 FTE") is written as given.
  */
-export type GroupChildCountGetter = (params: GroupChildCountParams) => number | string | null | undefined;
+export type GroupChildCountGetter<TData = any> = (params: GroupChildCountParams<TData>) => number | string | null | undefined;
 
 /** Where a footer row sits: `"top"` under its group's header (or first in the list for the grand
  * total), `"bottom"` after the group's last row (or last in the list). */
 export type GroupTotalRowPosition = "top" | "bottom";
 
 /** What a `groupTotalRowLabel` function is handed for one footer row. */
-export interface GroupTotalRowLabelParams {
+export interface GroupTotalRowLabelParams<TData = any> {
   /** The footer row (`footer: true`; `grandTotal: true` on the grand-total row). */
-  node: import("./iRowNode").IRowNode;
+  node: import("./iRowNode").IRowNode<TData>;
   /** The group the footer totals; undefined on the grand-total row. */
-  groupNode: import("./iRowNode").IRowNode | undefined;
+  groupNode: import("./iRowNode").IRowNode<TData> | undefined;
   /** Whether this is the grand-total row. */
   grandTotal: boolean;
   /** The group's label without its count ("" on the grand-total row). */
@@ -250,11 +271,11 @@ export type MultiColumnMenuItemsGetter = (
 ) => MenuItem[];
 
 /** Context used to decide or create a row inserted from a row-number context menu. */
-export interface RowInsertionMenuParams {
+export interface RowInsertionMenuParams<TData = any> {
   position: "above" | "below";
   rowId: string;
-  data: any;
-  node: IRowNode;
+  data: TData;
+  node: IRowNode<TData>;
   /** Page-local/displayed index of the row whose number was right-clicked. */
   viewIndex: number;
   /** Index of that row in the client-side model's underlying source order. */
@@ -267,11 +288,11 @@ export interface RowInsertionMenuParams {
  * Opt-in row-number context-menu insertion. The application creates the new row so required
  * fields and stable row IDs remain under application control.
  */
-export interface RowInsertionMenuOptions {
+export interface RowInsertionMenuOptions<TData = any> {
   /** Return the row to insert, or null/undefined to cancel the command. */
-  createRow: (params: RowInsertionMenuParams) => any | null | undefined;
+  createRow: (params: RowInsertionMenuParams<TData>) => TData | null | undefined;
   /** Omit an individual direction for rows where insertion is not allowed. Defaults to true. */
-  canInsert?: (params: RowInsertionMenuParams) => boolean;
+  canInsert?: (params: RowInsertionMenuParams<TData>) => boolean;
 }
 
 /**
@@ -310,7 +331,7 @@ export interface TreeDataCommonOptions<Row = any> {
    * pinning, sorting, filtering, visibility, menu flags, and other ordinary column options apply.
    * Defaults to an unpinned column labelled "Hierarchy".
    */
-  columnDef?: Partial<ColDef>;
+  columnDef?: Partial<ColDef<Row>>;
   /**
    * "grid" preserves the ordinary Ctrl/Cmd+Arrow data-block jumps. In "hierarchy" mode,
    * Ctrl/Cmd+Right expands; Ctrl/Cmd+Left collapses an expanded parent or focuses the direct parent
@@ -390,9 +411,9 @@ export type TreeDataOptions<Row = any> =
 export type RowPinnedPosition = "top" | "bottom";
 
 /** Context passed to {@link GridOptions.isRowPinned}. */
-export interface IsRowPinnedParams {
-  node: IRowNode;
-  data: any;
+export interface IsRowPinnedParams<TData = any> {
+  node: IRowNode<TData>;
+  data: TData;
   rowId: string;
   rowIndex: number;
   isGroup: boolean;
@@ -546,7 +567,7 @@ export type FillLineMode = "copy" | "series";
 export type FillTrigger = "drag" | "doubleClick" | "command";
 
 /** What {@link GridOptions.fillOperation} learns about one target cell before the fill writes it. */
-export interface FillOperationParams {
+export interface FillOperationParams<TData = any> {
   /** The line's source values in pattern order — the column's selected cells when filling
    * vertically, the row's when horizontally. */
   values: readonly unknown[];
@@ -568,7 +589,7 @@ export interface FillOperationParams {
   rowId: string;
   colId: string;
   colInstanceId: string;
-  node: IRowNode;
+  node: IRowNode<TData>;
   trigger: FillTrigger;
 }
 
@@ -657,8 +678,7 @@ export interface ResolvedAggregateScopeControlOptions {
   unavailableMessage: string;
 }
 
-export const DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE =
-  "Entire-dataset totals need a server aggregation source: the data source's getAggregates, or serverSideAggregationSource.";
+export const DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE = DEFAULT_LOCALE_TEXT.aggregateScopeEntireDatasetUnavailable;
 
 export interface ResolvedPaginationControlsOptions {
   pageSelection: PaginationPageSelection;
@@ -682,6 +702,7 @@ const PAGINATION_CONTROL_SET = new Set<PaginationControl>(DEFAULT_PAGINATION_CON
 
 export function resolvePaginationControlsOptions(
   options?: PaginationControlsOptions,
+  t: LocaleTextResolver = defaultLocaleText,
 ): ResolvedPaginationControlsOptions {
   const controls: PaginationControl[] = [];
   const seen = new Set<PaginationControl>();
@@ -702,7 +723,7 @@ export function resolvePaginationControlsOptions(
     maxPageButtons,
     aggregateScope: {
       whenUnavailable: options?.aggregateScope?.whenUnavailable === "hidden" ? "hidden" : "disabled",
-      unavailableMessage: options?.aggregateScope?.unavailableMessage ?? DEFAULT_AGGREGATE_SCOPE_UNAVAILABLE_MESSAGE,
+      unavailableMessage: options?.aggregateScope?.unavailableMessage ?? t("aggregateScopeEntireDatasetUnavailable"),
     },
   };
 }
@@ -1097,7 +1118,25 @@ export function resolveBarResponsiveMode(mode: BarResponsiveMode | undefined): B
   return "collapse";
 }
 
-export interface GridOptions {
+/**
+ * Options for one grid.
+ *
+ * `TData` is the row type — the shape of one object in `rowData` — and defaults to `any`, so an
+ * unparameterized `GridOptions` behaves exactly as before. Supplying it (`GridOptions<Trade>`)
+ * types the row in every option that receives or returns one: `getRowId`, the pinned row arrays,
+ * `getRowClass` / `getRowStyle` / `getRowPresentation`, `isRowSelectable`, `isRowPinned`,
+ * `isFullWidthRow` / `fullWidthCellRenderer`, `defaultColDef` / `groupColumnDef` /
+ * `pivotResultColumnDef` (as `ColDef<TData>`), `treeData`, `aggFuncs`, `groupChildCount`,
+ * `groupTotalRowLabel`, `rowInsertionMenu`, `fillOperation`, `onBeforeCellCommit`, and the click
+ * callbacks (`onCellClicked`, `onRowClicked` and their double-click forms). `createGrid` and the
+ * framework bindings take the same parameter, which also types `columnDefs`, `rowData` and the
+ * returned `IGridAPI<TData>`.
+ *
+ * Left untyped on purpose: the server-side data source (its result rows are leaf rows or GROUP BY
+ * objects, by request level) and `getGroupChildCount` (it receives a server-side group row). On a
+ * client-side group row, `data` is a synthesized placeholder, not a `TData`.
+ */
+export interface GridOptions<TData = any> {
   /**
    * Height in px of every header level, unless `leafHeaderHeight` / `parentHeaderHeight` sets that
    * level. When omitted, a theme's `headerHeight` param applies (read at creation only: swapping the
@@ -1126,13 +1165,13 @@ export interface GridOptions {
    * Application-owned rows rendered in a frozen band immediately below the header. These rows are
    * outside sorting, filtering, grouping, pagination, selection, and the virtualized row count.
    */
-  pinnedTopRowData?: any[];
+  pinnedTopRowData?: NoInfer<TData>[];
   /**
    * Application-owned rows rendered in a frozen band below the scrollable body. These rows are
    * outside sorting, filtering, grouping, pagination, selection, and the virtualized row count.
    */
-  pinnedBottomRowData?: any[];
-  getRowId?: (row: object) => string;
+  pinnedBottomRowData?: NoInfer<TData>[];
+  getRowId?: (row: TData) => string;
   rowIdKey?: string;
   /**
    * How a replacement `rowData` array is applied. The React and Angular bindings compare `rowData`
@@ -1194,31 +1233,31 @@ export interface GridOptions {
    * space-separated string, an array, or nothing. Applied on top of the grid's own row classes and
    * recomputed as rows scroll into view. Use for state-driven styling (e.g. flag error rows).
    */
-  getRowClass?: GetRowClass;
+  getRowClass?: GetRowClass<TData>;
   /**
    * Conditional per-row inline styles (camelCase CSS properties). Called for each rendered row;
    * return a style object or nothing. Recomputed as rows scroll into view.
    */
-  getRowStyle?: GetRowStyle;
+  getRowStyle?: GetRowStyle<TData>;
   /**
    * Row-scoped presentation defaults for row/cell styling, tooltips, accessibility, editability,
    * and opaque metadata. Evaluated while rendering and when row behavior is queried. Keep the
    * callback pure and synchronous. Call `api.refreshRowPresentation()` after changing external
    * state used by this callback.
    */
-  getRowPresentation?: GetRowPresentation;
+  getRowPresentation?: GetRowPresentation<TData>;
   /**
    * Called when a body cell is clicked (left button). Convenience wrapper over the `cellClicked`
    * event; equivalent to `api.on("cellClicked", …)`. Does not fire for the row-number cell. The
    * payload includes the row's `node` and `isGroup`; on a group row `value` is the column's
    * aggregate, or the group label on the group's label column.
    */
-  onCellClicked?: (params: GridEventCellClickedParams) => void;
+  onCellClicked?: (params: GridEventCellClickedParams<TData>) => void;
   /**
    * Called when a body row is clicked (left button), including group rows. Convenience wrapper over
    * the `rowClicked` event. The payload includes the row's `node`.
    */
-  onRowClicked?: (params: GridEventRowClickedParams) => void;
+  onRowClicked?: (params: GridEventRowClickedParams<TData>) => void;
   /**
    * Called when a body cell is double-clicked (left button). Convenience wrapper over the
    * `cellDoubleClicked` event; the payload matches `onCellClicked`. Neither `cellDoubleClicked` nor
@@ -1226,14 +1265,14 @@ export interface GridOptions {
    * otherwise both fire regardless of `cellSelection` / `editTrigger`. Not fired for the row-number
    * or checkbox cells (same as `cellClicked`).
    */
-  onCellDoubleClicked?: (params: GridEventCellDoubleClickedParams) => void;
+  onCellDoubleClicked?: (params: GridEventCellDoubleClickedParams<TData>) => void;
   /**
    * Called when a body row is double-clicked (left button), including group rows. Convenience
    * wrapper over the `rowDoubleClicked` event; the payload matches `onRowClicked`. Not fired when
    * the double-click opened the editor or ran the fill handle; otherwise fires regardless of
    * `cellSelection` / `editTrigger`.
    */
-  onRowDoubleClicked?: (params: GridEventRowDoubleClickedParams) => void;
+  onRowDoubleClicked?: (params: GridEventRowDoubleClickedParams<TData>) => void;
   /**
    * Pre-commit hook run synchronously before any user-initiated cell write — editor commits,
    * `setCellValue`, and paste/cut/clear batches (per cell). It runs *after* the column's
@@ -1246,7 +1285,7 @@ export interface GridOptions {
    *     `null` instead).
    * Undo/redo replay already-accepted values and do not run the hook.
    */
-  onBeforeCellCommit?: (params: BeforeCellCommitParams) => unknown;
+  onBeforeCellCommit?: (params: BeforeCellCommitParams<TData>) => unknown;
   /**
    * Decide what a fill writes into each target cell, for series the grid cannot know — fiscal
    * periods, business days, ordered enumerations, codes with rules, values derived from the row.
@@ -1261,7 +1300,7 @@ export interface GridOptions {
    * Also consulted when the grid checks whether a fill would write anything (to show or hide the
    * body menu's fill items), so keep it free of side effects.
    */
-  fillOperation?: (params: FillOperationParams) => FillOperationResult | null | undefined | void;
+  fillOperation?: (params: FillOperationParams<TData>) => FillOperationResult | null | undefined | void;
   /**
    * Called when a cell edit is committed with a new value. Convenience wrapper over the
    * `editingChanged` event (state "committed").
@@ -1324,6 +1363,130 @@ export interface GridOptions {
    */
   onHistoryChanged?: (params: GridEventHistoryChangedParams) => void;
   /**
+   * Called when column widths change — a resize-handle drag (`final: false` per pointer move, then
+   * one `final: true`), a double-click or API autosize, a fit after data or grouping changes.
+   * Convenience wrapper over the `columnWidthsChanged` event; persist widths when `params.final` is
+   * true, and only for `params.source === "user"` to skip the grid's own adjustments.
+   */
+  onColumnWidthsChanged?: (params: GridEventColumnWidthsChangedParams) => void;
+  /**
+   * Called as a cell editor moves through its lifecycle: `started`, `committed`, `rejected`
+   * (refused by `onBeforeCellCommit` or the column's parser), `cancelled`, `stopped`. Convenience
+   * wrapper over the `editingChanged` event. For "a stored value changed" on every write path
+   * (paste, fill, undo included) use `onCellValueChanged` instead.
+   */
+  onEditingChanged?: (params: GridEventEditingChangedParams) => void;
+  /**
+   * Called when the body cursor (the focused cell) moves or clears, with the previous and next
+   * cell. Convenience wrapper over the `focusChanged` event.
+   */
+  onFocusChanged?: (params: GridEventFocusChangedParams) => void;
+  /**
+   * Called when the header keyboard cursor moves, enters or leaves the header. Convenience wrapper
+   * over the `headerFocusChanged` event (separate from `onFocusChanged`: the two positions are
+   * mutually exclusive).
+   */
+  onHeaderFocusChanged?: (params: GridEventHeaderFocusChangedParams) => void;
+  /**
+   * Called when the displayed rows were re-laid out — new data, a transaction, grouping or
+   * expansion, a page or server-side block, a column change that re-lays every row. Convenience
+   * wrapper over the low-level `rowsChanged` event the renderer repaints from; prefer
+   * `onRowDataUpdated` for "the data changed" and `onRowGroupOpened` for expansion.
+   */
+  onRowsChanged?: (params: GridEventRowsChangedParams) => void;
+  /**
+   * Called when pivot mode is toggled or the pivot column set changes. Convenience wrapper over
+   * the `pivotChanged` event.
+   */
+  onPivotChanged?: (params: GridEventPivotChangedParams) => void;
+  /**
+   * Called when the generated pivot columns start or stop being truncated by `maxPivotColumns`, or
+   * the number dropped changes. Convenience wrapper over the latched `pivotColumnLimitReached`
+   * event — show a notice while `params.limited`.
+   */
+  onPivotColumnLimitReached?: (params: GridEventPivotColumnLimitReachedParams) => void;
+  /**
+   * Called when the row model re-derived its view (`params.reason`: init, data, filter, an API
+   * change …). Convenience wrapper over the `modelUpdated` event.
+   */
+  onModelUpdated?: (params: GridEventModelUpdatedParams) => void;
+  /**
+   * Convenience wrapper over the `viewportChanged` event, which the grid emits once when it
+   * initialises. To follow scrolling use `onBodyScroll`.
+   */
+  onViewportChanged?: (params: GridEventViewportChangedParams) => void;
+  /**
+   * Called when cells need repainting — values written, formats or styles changed, an edit
+   * committed, a refresh — with the affected row and column ids. Convenience wrapper over the
+   * low-level `cellsChanged` event; for value changes alone prefer `onCellValueChanged`.
+   */
+  onCellsChanged?: (params: GridEventCellsChangedParams) => void;
+  /**
+   * Called when the aggregate (footer) values or model change — the aggregate model, its scope,
+   * the rows or columns under it, or a server-side aggregate response. Convenience wrapper over the
+   * `aggregateChanged` event.
+   */
+  onAggregateChanged?: (params: GridEventAggregateChangedParams) => void;
+  /**
+   * Called when the overlay is shown or taken down — `"loading"` when a row-model request starts
+   * or the API shows it, `"noRows"` when the API shows the no-rows overlay, `"none"` when a request
+   * settles or the API hides it. Convenience wrapper over the `overlayShow` event.
+   */
+  onOverlayShow?: (params: GridEventOverlayShowParams) => void;
+  /**
+   * Called when a body, header or grid-UI tooltip opens. Convenience wrapper over the
+   * `tooltipShow` event.
+   */
+  onTooltipShow?: (params: GridEventTooltipParams) => void;
+  /**
+   * Called when a tooltip closes. Convenience wrapper over the `tooltipHide` event.
+   */
+  onTooltipHide?: (params: GridEventTooltipParams) => void;
+  /**
+   * Called when a cell's ActionFrame opens or closes. Convenience wrapper over the
+   * `actionFrameChanged` event.
+   */
+  onActionFrameChanged?: (params: GridEventActionFrameParams) => void;
+  /**
+   * Called when the tree-data keyboard navigation mode switches (API, shortcut or options).
+   * Convenience wrapper over the `keyboardNavigationModeChanged` event.
+   */
+  onKeyboardNavigationModeChanged?: (params: GridEventKeyboardNavigationModeChangedParams) => void;
+  /**
+   * Called when row groups or tree nodes are expanded or collapsed — once per chevron click,
+   * keyboard command or API call, after the view is rebuilt, listing only the rows whose state
+   * changed (`params.groupIds`) and the state they are now in (`params.expanded`). `params.source`
+   * is `"user"` for the chevron and the tree keyboard shortcuts, `"api"` otherwise. Convenience
+   * wrapper over the `rowGroupOpened` event.
+   */
+  onRowGroupOpened?: (params: GridEventRowGroupOpenedParams) => void;
+  /**
+   * Called when column groups are opened or closed — the header expander (`params.source:
+   * "user"`) or `api.setColumnGroupState` / a saved-view restore (`"api"`); one call per
+   * direction, changed groups only. Convenience wrapper over the `columnGroupOpened` event.
+   */
+  onColumnGroupOpened?: (params: GridEventColumnGroupOpenedParams) => void;
+  /**
+   * Called once per grid, after the first paint that shows at least one row — later, when the rows
+   * arrive, for a grid created empty or waiting on the server; never for a grid that stays empty.
+   * Convenience wrapper over the `firstDataRendered` event; the place for work that needs painted
+   * rows (sizing to content, scrolling to a row).
+   */
+  onFirstDataRendered?: (params: GridEventFirstDataRenderedParams) => void;
+  /**
+   * Called when the row data changes: a `rowData` update / `setRowData` (`params.reason:
+   * "rowData"`), `applyTransaction` or a flushed `applyTransactionAsync` batch (`"transaction"`),
+   * or a server-side block load or purge (`"serverSide"`). Not called for sorting, filtering or
+   * grouping. Convenience wrapper over the `rowDataUpdated` event.
+   */
+  onRowDataUpdated?: (params: GridEventRowDataUpdatedParams) => void;
+  /**
+   * Called on every body scroll tick with the vertical offset, the centre section's horizontal
+   * offset and which of them moved. Convenience wrapper over the `bodyScroll` event; keep the
+   * handler cheap — it runs for every scroll event the browser fires.
+   */
+  onBodyScroll?: (params: GridEventBodyScrollParams) => void;
+  /**
    * Accessible name for the grid, applied as `aria-label` on the element carrying `role="grid"`.
    *
    * A grid is required to have an accessible name, and the host page cannot supply one from
@@ -1371,7 +1534,7 @@ export interface GridOptions {
    * are deselected. On the server-side row model, rows not yet loaded cannot be evaluated and are
    * treated as selectable until they load.
    */
-  isRowSelectable?: (node: IRowNode) => boolean;
+  isRowSelectable?: (node: IRowNode<TData>) => boolean;
   /**
    * Controls how body cells can be interacted with — by mouse and keyboard alike:
    * - `true` (default): clicking a cell selects/focuses it (grid selection); enables range
@@ -1534,7 +1697,7 @@ export interface GridOptions {
    * count, say), and null/undefined leaves that group's count out. Tree rows never show a count.
    * Live: `updateGridOptions({ groupChildCount })` repaints the group rows.
    */
-  groupChildCount?: boolean | GroupChildCountGetter;
+  groupChildCount?: boolean | GroupChildCountGetter<TData>;
   /**
    * Adds a footer (subtotal) row to every expanded group: `"bottom"` after the group's last row,
    * `"top"` directly under its header. The footer repeats the group's aggregates column by column
@@ -1564,7 +1727,7 @@ export interface GridOptions {
    * "Total <group label>" (the group's label without its count) and "Grand Total". Live:
    * `updateGridOptions({ groupTotalRowLabel })` repaints the rows.
    */
-  groupTotalRowLabel?: (params: GroupTotalRowLabelParams) => string;
+  groupTotalRowLabel?: (params: GroupTotalRowLabelParams<TData>) => string;
   /**
    * Custom aggregate functions by name. A name here can be used wherever an aggregate type is
    * accepted: `ColDef.aggFunc`, `api.setAggregates`, the aggregate menus (which list them after
@@ -1572,7 +1735,7 @@ export interface GridOptions {
    * computes every aggregate, so any name is sent unchanged and an entry here only lists it in the
    * menus. Read at creation.
    */
-  aggFuncs?: Record<string, AggregateFunction>;
+  aggFuncs?: Record<string, AggregateFunction<TData>>;
   /**
    * Tooltip shown on the pagination page selector while the total row count is provisional — when
    * a server-side listing has not reported `totalRows` and its end has not been reached yet, the
@@ -1650,7 +1813,7 @@ export interface GridOptions {
    * intentionally absent by default and only applies to client-side model rows. `createRow`
    * supplies the new row; `canInsert` can conditionally hide either direction.
    */
-  rowInsertionMenu?: RowInsertionMenuOptions;
+  rowInsertionMenu?: RowInsertionMenuOptions<TData>;
   /**
    * When true, the keyboard edit triggers (F2 / Enter to edit the focused cell, and type-to-edit on
    * a printable key) are disabled. Navigation and clipboard shortcuts are unaffected. Combine with
@@ -1697,7 +1860,7 @@ export interface GridOptions {
    * internal group column id). Identity and grouping-machinery fields (`colId`, `key`, `children`,
    * `groupable`, `aggregatable`, `filter`) are grid-owned and cannot be overridden.
    */
-  groupColumnDef?: Partial<ColDef>;
+  groupColumnDef?: Partial<ColDef<TData>>;
   /**
    * Depth to which groups start expanded when a grouping is first applied. 0 (default) leaves all
    * groups collapsed; a value of N expands the first N levels; -1 expands all levels. Per-group
@@ -1731,7 +1894,7 @@ export interface GridOptions {
    * Identity and behavior locks (`colId`, `editable: false`, `movable: false`, `filter: false`,
    * …) are grid-owned and cannot be overridden. Generated group headers take no overlay.
    */
-  pivotResultColumnDef?: Partial<ColDef>;
+  pivotResultColumnDef?: Partial<ColDef<TData>>;
   /**
    * Cap on generated pivot leaf columns (default 200). A discovery past the cap truncates
    * deterministically — the first columns in header order survive — and fires
@@ -1766,7 +1929,7 @@ export interface GridOptions {
    * and a relationship mode belongs to exactly one row model — the mismatched pair is dropped with
    * a warning.
    */
-  treeData?: TreeDataOptions;
+  treeData?: TreeDataOptions<TData>;
   /**
    * Whether group (summary) rows participate in cell selection, keyboard navigation, and clipboard
    * copy/cut. When false (default), group rows are skipped: clicking a group cell selects nothing,
@@ -1790,7 +1953,7 @@ export interface GridOptions {
    * The live node moves out of the body section while pinned and retains group expansion and
    * aggregate values; unpinning returns it to its model-owned body position.
    */
-  isRowPinned?: (params: IsRowPinnedParams) => RowPinnedPosition | null | undefined;
+  isRowPinned?: (params: IsRowPinnedParams<TData>) => RowPinnedPosition | null | undefined;
   /**
    * When true, the expanded ancestor groups of the first visible body row stack in a frozen band
    * beneath pinnedTopRowData and explicitly pinned top rows. Works with client-side grouping and
@@ -1806,7 +1969,7 @@ export interface GridOptions {
    * rows in `groupDisplayType: "groupRows"` are treated as full-width automatically regardless of
    * this callback. Row height is unchanged. Client-side row model only.
    */
-  isFullWidthRow?: (node: IRowNode) => boolean;
+  isFullWidthRow?: (node: IRowNode<TData>) => boolean;
   /**
    * Renderer for a full-width row's content. Receives the standard {@link CellRendererParams} (with
    * the row node's data), plus `node`, the row node, and `isGroup`: true on a full-width group row
@@ -1815,7 +1978,7 @@ export interface GridOptions {
    * empty. Only consulted for rows that {@link isFullWidthRow} (or the `groupRows` display type)
    * marks as full-width.
    */
-  fullWidthCellRenderer?: CellRenderer;
+  fullWidthCellRenderer?: CellRenderer<TData>;
   /**
    * Default column definition merged *under* every column. Any {@link ColDef} field set here becomes
    * the grid-wide default for that field; an explicit value on an individual column always wins, and
@@ -1825,7 +1988,7 @@ export interface GridOptions {
    * here. The per-column identity/structural fields (`colId`, `key`, `label`, `children`) are not
    * accepted (see {@link DefaultColDef}).
    */
-  defaultColDef?: DefaultColDef;
+  defaultColDef?: DefaultColDef<TData>;
   /**
    * Tooltips. Pass `true` (or omit) to enable with defaults, an options object to customise, or
    * `false` to disable all tooltips (including the built-in auto-truncation tooltip). Enabled by
@@ -1883,6 +2046,31 @@ export interface GridOptions {
    * "Add row groups, column labels or values to build the pivot".
    */
   pivotEmptyMessage?: string;
+  /**
+   * Translations for the grid's own user-visible strings — visible text, aria-labels, tooltips,
+   * placeholders, menu labels, filter operator names, screen-reader announcements and default
+   * column labels. Keys missing from the map fall back to the English defaults
+   * (`DEFAULT_LOCALE_TEXT`). Strings with variables use `{name}` placeholders
+   * (`"Page {page} of {total}"`); a count-dependent string has a `…One` and a `…Other` key.
+   *
+   * `getLocaleText` wins over this map, and the dedicated message options (`loadingMessage`,
+   * `noRowsMessage`, `pivotNoValuesMessage`, `pivotEmptyMessage`,
+   * `paginationUnknownTotalTooltip`) win over their matching keys. Number and date formatting is
+   * separate: it follows `formatterOptions.locale` on the column.
+   *
+   * Creation-only: the grid reads it once, so switching language means creating the grid again
+   * (in React, remount it with a new `key`; the framework bindings warn in development when this
+   * prop or input changes on a mounted grid).
+   */
+  localeText?: Partial<GridLocaleText>;
+  /**
+   * Translate any grid string in code — for plural rules beyond `…One` / `…Other`, ICU messages or
+   * a translation library. Called for every string with its key, the text the grid would otherwise
+   * use (`localeText` entry or English default, still uninterpolated) and the placeholder values;
+   * the returned text is interpolated afterwards. Wins over `localeText`. Creation-only, like
+   * `localeText`.
+   */
+  getLocaleText?: GetLocaleText;
   /**
    * Grid-wide default debounce (ms) for column filters — the delay between a filter input change
    * and the view refresh. A column's `filterParams.debounceMs` overrides this per column. Defaults
@@ -2123,6 +2311,9 @@ export const UPDATABLE_OPTION_KEYS = [
   "columnDefs",
 ] as const;
 
+/** Runtime-slice options whose callbacks receive a row: typed from `GridOptions<TData>` instead. */
+type RowTypedRuntimeOptionKey = "getRowClass" | "getRowStyle" | "getRowPresentation" | "rowInsertionMenu";
+
 /**
  * The grid options a mounted grid can be reconfigured with, via `IGridAPI.updateGridOptions`.
  *
@@ -2132,15 +2323,16 @@ export const UPDATABLE_OPTION_KEYS = [
  * decide which columns and row model exist, `getRowId` / `rowIdKey` define row identity). Changing
  * one of those means creating a new grid.
  */
-export type UpdatableGridOptions =
-  Partial<RuntimeGridOptions>
-  & Pick<GridOptions, (typeof WIDGET_OPTION_KEYS)[number]>
+export type UpdatableGridOptions<TData = any> =
+  Partial<Omit<RuntimeGridOptions, RowTypedRuntimeOptionKey>>
+  & Pick<GridOptions<TData>, RowTypedRuntimeOptionKey>
+  & Pick<GridOptions<TData>, (typeof WIDGET_OPTION_KEYS)[number]>
   & {
     /**
      * Replace the column definitions. Marks the schema as caller-owned, exactly as passing
      * `columnDefs` to `createGrid` does, so a later `setRowData` cannot substitute an inferred schema.
      */
-    columnDefs?: ColDef[] | null;
+    columnDefs?: ColDef<TData>[] | null;
   };
 
 /**
@@ -2169,7 +2361,14 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   onBeforeCellCommit: true, fillOperation: true, onCellValueChanged: true,
   onSelectionChanged: true, onSortChanged: true, onColumnsChanged: true,
   onPaginationChanged: true, onError: true, onFilterChanged: true,
-  onQuickFilterFindChanged: true, onHistoryChanged: true, ariaLabel: true, ariaLabelledBy: true,
+  onQuickFilterFindChanged: true, onHistoryChanged: true, onColumnWidthsChanged: true,
+  onEditingChanged: true, onFocusChanged: true, onHeaderFocusChanged: true, onRowsChanged: true,
+  onPivotChanged: true, onPivotColumnLimitReached: true, onModelUpdated: true,
+  onViewportChanged: true, onCellsChanged: true, onAggregateChanged: true, onOverlayShow: true,
+  onTooltipShow: true, onTooltipHide: true, onActionFrameChanged: true,
+  onKeyboardNavigationModeChanged: true, onRowGroupOpened: true, onColumnGroupOpened: true,
+  onFirstDataRendered: true, onRowDataUpdated: true, onBodyScroll: true,
+  ariaLabel: true, ariaLabelledBy: true,
   highlightActiveCell: true, rowSelection: true, isRowSelectable: true, cellSelection: true,
   rangeSelection: true, fillHandle: true, columnSelection: true, headerKeyboardNavigation: true,
   showColumnButtonsOnHover: true, bodyContextMenu: true, multiColumnMenu: true,
@@ -2190,6 +2389,7 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   fullWidthCellRenderer: true, defaultColDef: true, tooltip: true, quickFilter: true,
   columnPanel: true, toolbar: true, savedViews: true, sheets: true, loadingMessage: true,
   noRowsMessage: true, pivotNoValuesMessage: true, pivotEmptyMessage: true,
+  localeText: true, getLocaleText: true,
   filterDebounceMs: true, cellFlashDuration: true, cellFadeDuration: true, icons: true,
   theme: true, suppressStyleInjection: true, styleNonce: true,
 };

@@ -13,6 +13,7 @@ output or template reference, and `createGrid()` in a core integration.
 | Method | Purpose |
 | --- | --- |
 | `updateGridOptions(options)` | Change presentation and behavior options in place, preserving scroll, selection, focus, and edit history |
+| `getGridOption(key)` | Read one option: the value last supplied (to `updateGridOptions` or a wrapper prop, else at creation), as given; `undefined` for an option never set — no defaults are filled in. `pivotMode` and `pivotColumns` read the live pivot state |
 | `registerMenuAdapter(adapter)` | Install (or remove, with `null`) the column-menu adapter on a mounted grid |
 | `registerBodyMenuAdapter(adapter)` | The same for the body context menu |
 
@@ -74,13 +75,35 @@ which run before the adapter.
 | `autoSizeColumns(colIds)` / `autoSizeAllColumns()` | Fit columns to their content, dropping user widths, with one `columnWidthsChanged` for the batch |
 | `setColumnWidth(colId, widthPx)` / `setColumnWidths(widths)` | Set widths as a resize drag would (clamped to the column's bounds, kept across autosizes); one event per call |
 | `sizeColumnsToFit()` | Scale the visible unpinned columns to fill the centre viewport exactly (pinned, `resizable: false`, and utility columns keep their widths) |
+| `setColumnPinned(colIds, pinned)` | Pin one column (a colId) or several to `"left"` / `"right"`, or unpin with `null` — the column menu's Pin items; unpinnable columns are skipped; `columnsChanged` with `reason: "pin"` |
+| `setColumnsVisible(colIds, visible)` / `setColumnVisible(colId, visible)` | Show or hide columns; hiding skips `hideable: false` columns; `columnsChanged` with `reason: "visibility"`, none when nothing changes |
+| `moveColumn(colId, toIndex)` / `moveColumns(colIds, toIndex)` | Move columns (as a block, in the order given) to `toIndex` of `getColumnState()` order — every non-internal leaf, hidden included, left → centre → right. Each column stays in its section (the index is clamped to it); `lockPosition` and `movable: false` columns are skipped, locked columns keep their edge; a group's colId moves the group. One `columnsChanged` with `reason: "order"`, none when nothing moved |
 | `getColumnGroupState()` | Read every column group's expander state (open/closed) by colId, nested groups included |
 | `setColumnGroupState(groups)` | Open or close column groups by colId in one rebuild — what the header expander does; groups not named keep their state |
 | `getColumnModel()` | Read runtime columns and sections |
+| `getColumnDefs()` | The definitions as the grid holds them now, with the current width, pinning, visibility, sort, aggregate, and group open state written in — `setColumnDefs(getColumnDefs())` changes nothing (see below) |
+| `getColumn(colId)` / `getColumns()` | One application column (tolerant id lookup), or every leaf in display order with hidden ones — the columns `getColumnState()` describes. Internal columns (row numbers, selection checkbox, auto-group, pivot results) are left out |
+| `addSparklineColumn({ colIds, sparklineType, targetColId?, colId? })` | Add a transient sparkline column over `colIds` — the column menu's Show Sparklines; returns its colId, or `null` when no id names a column ([Sparklines](../examples/sparklines.mdx#sparklines-the-user-builds)) |
 | `refreshServerSideData(options?)` | Soft-refresh or purge the server cache, or one subtree of it — `groupKeys` for a group path, `rowId` for a server-tree row |
 | `refreshRowPresentation()` | Re-evaluate row presentation for rendered body, pinned, and sticky rows after external state changes |
 | `forEachNode(callback)` | Visit every node the model holds — data rows (filtered-out and collapsed included), then group nodes |
 | `forEachLeafNode(callback)` | Visit every data (non-group) row, filtered-out and collapsed included |
+
+**Reading the definitions back.** `getColumnDefs()` returns a fresh tree in the current
+display order and structure, groups with their `children`. Each entry is the column's own
+definition as last applied — before `defaultColDef` is merged in, with the same function and
+object references — with the current state written over it: `colId` (always set), a leaf's
+`width`, a top-level column's `pinned` (removed when unpinned), `hidden` (removed when shown),
+`sort` / `sortIndex` (removed when unsorted), `aggFunc` for an aggregated column (its first
+aggregate), and `openByDefault` for a group with an expander. Row-grouping columns, a column's
+second and later aggregates, and sorts on the auto-group column have no place in a definition:
+`setColumnDefs` keeps them on the same grid (it matches columns by colId), and
+`captureViewState()` carries them to another one.
+
+```ts
+const defs = api.getColumnDefs();
+api.setColumnDefs(defs.map(def => def.colId === "price" ? { ...def, label: "Unit price" } : def));
+```
 
 **Who owns the column schema.** A server-side response can carry its own `columns`, and the grid
 arbitrates between that and the application: once the application supplies definitions through
@@ -110,6 +133,7 @@ server, release ownership with `updateGridOptions({ columnDefs: undefined })`.
 | `checkSetFilterValue(colId, value)` / `uncheckSetFilterValue(colId, value)` | Toggle one value by intent |
 | `setSetFilterValues(colId, values, { mode }?)` | Replace the set filter; `mode` pins include/exclude semantics |
 | `setAllGroupsExpanded(expanded)` | Expand/collapse all groups in one pass |
+| `setGroupExpanded(groupIds, expanded)` | Expand/collapse the named group / tree nodes in one rebuild; unknown ids are ignored, nothing happens when they are already in that state |
 | `getGroupNodes()` | Every group / tree node in the model (empty when not grouped); `forEachNodeAfterFilter*` walk data rows only |
 | `getRowNode(rowId)` | The node for a data row, a group / tree node (client-side; loaded rows server-side) or a pinned band row; `undefined` for an unknown id — a regroup retires the old group ids |
 | `getPaginationInfo()` | Current pagination state, the same object `paginationChanged` carries: `{ paginationEnabled, pageIndex, pageSize, totalRowCount, totalPageCount, totalRowCountKnown, pageSizes }` (`pageIndex` is 0-based); counts are over the filtered view, and `totalRowCountKnown` is `false` while a server-side total is still provisional |
@@ -230,6 +254,8 @@ whole filtered set by default (`selectAllScope` option), and
 
 | Method | Purpose |
 | --- | --- |
+| `getFocusedCell()` | The active cell as a `CellRef` (`rowPinned` set in a pinned band), or `null` when there is none — independent of DOM focus |
+| `setFocusedCell(cell)` / `setFocusedCell(viewIdx, colIdx)` | Make a cell active and scroll it into view, by `CellRef` (the only form that reaches a pinned row) or by page-relative view index and visible-leaf index; no-op for a row or column with no slot |
 | `getRowSelectionState()` / `setRowSelectionState(state)` | Read or replace the row selection as `{ selectAll, toggledRowIds }` — on the server-side row model a select-all is "every row of the current query except `toggledRowIds`", the form to hand the server for a bulk operation ([server-side select-all](../examples/selection.mdx#server-side-select-all)) |
 
 ## Keyboard shortcuts
@@ -266,6 +292,7 @@ display hint) or automatically when a built-in binding shares the item's
 | `ensureRowVisible(rowId, { position }?)` | Scroll a row into view by stable row id |
 | `ensureColumnVisible(colId)` | Scroll a column into view horizontally |
 | `ensureCellVisible(cell, { position }?)` | Both axes at once |
+| `scrollTo({ topPx?, leftPx? })` | Scroll the body to absolute pixel offsets; an omitted axis stays where it is, `leftPx` moves the centre section |
 
 These are for "jump to row" flows — a validation error, a find-in-grid result, a
 row a notification just arrived about — and they do whatever it takes to get the
@@ -341,6 +368,38 @@ are also outside row selection, so `selectAllRows()`, `selectRowsById()`, and
 the selected-row APIs do not include them. Pinned cells can still be focused,
 edited, and included in cell-range or column selections.
 
+## Overlays
+
+| Method | Purpose |
+| --- | --- |
+| `showLoadingOverlay()` | Show the loading overlay (spinner + `loadingMessage`) until `hideOverlay()`; holds the no-rows overlay back meanwhile |
+| `showNoRowsOverlay()` | Show the no-rows overlay now, whatever the row count; the next data change re-decides it |
+| `hideOverlay()` | Hide the loading overlay, and the no-rows overlay unless the view really is empty |
+
+```ts
+api.showLoadingOverlay();
+const rows = await fetchOrders();
+api.setRowData(rows);
+api.hideOverlay();
+```
+
+The React and Angular `loading` input drives the same overlay. See
+[Loading and empty overlays](../examples/rendering.mdx#loading-and-empty-overlays).
+
+## Localization
+
+| Method | Purpose |
+| --- | --- |
+| `getLocaleText(key, variableValues?)` | One of the grid's own strings, translated the way the grid translates it (`getLocaleText` option, else `localeText`, else English), with `{placeholder}`s filled |
+
+```ts
+api.getLocaleText("sortAscending");                      // "Sort Ascending"
+api.getLocaleText("pageOfTotal", { page: 2, total: 9 }); // "Page 2 of 9"
+```
+
+Use it in custom header components, cell renderers, and menu items so they read
+like the grid around them. See [Localization](../examples/localization.mdx).
+
 ## Export
 
 `exportDataAsCsv` and `exportDataAsExcel` download files. `getDataAsCsv` and
@@ -349,7 +408,11 @@ edited, and included in cell-range or column selections.
 ## Events and cleanup
 
 Subscribe with `api.on(eventName, handler)` and call the returned unsubscribe
-function. `destroy()` releases the grid when a custom host owns its lifecycle.
+function. `destroy()` releases the grid when a custom host owns its lifecycle, and
+`isDestroyed()` reports whether it has run — already `true` while the teardown is in
+progress, so a cell renderer's `destroy` can tell the grid is going away. Calls on a
+destroyed grid do not throw, but they reach a detached renderer; check `isDestroyed()`
+rather than relying on what they do.
 
 `filterChanged` is the canonical "effective filter changed" signal: it fires
 once for every column-filter model change (API, filter menu, dispatch), every

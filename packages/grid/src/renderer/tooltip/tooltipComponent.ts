@@ -12,13 +12,13 @@ import { IGridAPI } from "../../interfaces/iGridAPI";
  *   when it is clipped). Grid-wide defaults for any of these come from `defaultColDef`, merged onto
  *   the column before resolution.
  */
-export interface TooltipComponentParams {
+export interface TooltipComponentParams<TData = any> {
   /** Raw cell value (body tooltips). Undefined for header tooltips. */
   value?: any;
   /** Formatted display value (body tooltips). Undefined for header tooltips. */
   valueFormatted?: any;
   /** The full row data (body tooltips). Undefined for header tooltips. */
-  data?: any;
+  data?: TData;
   /** Row id (body tooltips). */
   rowId?: string;
   /** Row index (body tooltips). */
@@ -28,7 +28,7 @@ export interface TooltipComponentParams {
   /** Where the tooltip is anchored. */
   location: "body" | "header";
   /** The grid API. */
-  api: IGridAPI;
+  api: IGridAPI<TData>;
   /** Dismiss the tooltip (useful for interactive tooltips with a close control). */
   hide: () => void;
   /** Scalar content resolved independently from the component (column → row → default → clipped). */
@@ -41,26 +41,26 @@ export interface TooltipComponentParams {
   [key: string]: any;
 }
 
-export type TooltipComponentFn = (p: TooltipComponentParams) =>
+export type TooltipComponentFn<TData = any> = (p: TooltipComponentParams<TData>) =>
   | string
   | number
   | null
   | undefined
   | HTMLElement;
 
-export interface ITooltipComponent {
+export interface ITooltipComponent<TData = any> {
   /** Called once when the component is created. */
-  init: (params: TooltipComponentParams) => void;
+  init: (params: TooltipComponentParams<TData>) => void;
   /** Must return the root element mounted into the tooltip. */
   getGui: () => HTMLElement;
   /** Called on updates; return true if updated in place, false to have the grid recreate it. */
-  refresh: (params: TooltipComponentParams) => boolean;
+  refresh: (params: TooltipComponentParams<TData>) => boolean;
   destroy: () => void;
 }
 
-export type TooltipComponentClass = new () => ITooltipComponent;
+export type TooltipComponentClass<TData = any> = new () => ITooltipComponent<TData>;
 
-export type TooltipComponent = TooltipComponentFn | TooltipComponentClass;
+export type TooltipComponent<TData = any> = TooltipComponentFn<TData> | TooltipComponentClass<TData>;
 
 export function isClassTooltipComponent(c: TooltipComponent): c is TooltipComponentClass {
   // Same heuristic as isClassRenderer/isClassHeaderComponent: class components carry init/getGui on

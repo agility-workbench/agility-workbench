@@ -8,17 +8,24 @@ export class ColumnMove {
     this.hierarchy = new ColumnHierarchy(model);
   }
 
+  /** Move `col` before the visible leaf at `targetIndex` of `section` (or to its end). */
   applyColumnReorder(col: Column, targetIndex: number, section: "left" | "center" | "right"): Column[] {
     if (targetIndex < 0) return [];
+    const targetArr = (section === "left" ? this.model.getLeftLeaves() : section === "right" ? this.model.getRightLeaves() : this.model.getCenterLeaves());
+    return this.applyColumnReorderBefore(col, targetArr[targetIndex] ?? null, section);
+  }
 
+  /**
+   * Move `col` into `section` immediately before the leaf `firstRight` (which may be hidden), or to
+   * the section's end when it is null. Returns the new top-level column list.
+   */
+  applyColumnReorderBefore(col: Column, firstRight: Column | null, section: "left" | "center" | "right"): Column[] {
     const newLeft = this.model.getLeftColumns().slice();
     const newCenter = this.model.getCenterColumns().slice();
     const newRight = this.model.getRightColumns().slice();
 
     const targetSection = section === "left" ? newLeft : section === "right" ? newRight : newCenter;
-    let targetArr = (section === "left" ? this.model.getLeftLeaves() : section === "right" ? this.model.getRightLeaves() : this.model.getCenterLeaves()).slice();
-    const appendAtEnd = targetIndex >= targetArr.length;
-    const firstRight = targetArr[targetIndex];
+    const appendAtEnd = !firstRight;
 
     const ancestors = this.model.getAncestors(col.instanceID);
     let topLevelDrag = col;
@@ -41,7 +48,6 @@ export class ColumnMove {
       if (idx >= 0) source.splice(idx, 1);
     }
 
-    targetArr = targetSection.map(c => c.getVisibleLeaves()).flat();
     let moveTo = 0;
     if (firstRight) {
       const firstRightAncestors = this.model.getAncestors(firstRight.instanceID);

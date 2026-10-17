@@ -117,6 +117,7 @@ export class BodyWindowRenderer {
 
   private patchRows(startIndex: number, total: number, rowPool: RowPoolDef[]) {
     const rowModel = this.params.core.getRowModel();
+    let painted = 0;
     for (let i = 0; i < rowPool.length; i++) {
       const viewIndex = startIndex + i;
       const slot = rowPool[i];
@@ -188,7 +189,10 @@ export class BodyWindowRenderer {
         this.patchCells(slot, row, viewIndex, rowNumber, rowPresentation);
       }
       this.params.applyCellStateToSlot(slot, viewIndex);
+      painted++;
     }
+    // Latched in the core: only the first paint that shows a row emits `firstDataRendered`.
+    if (painted > 0) this.params.core.noteBodyRowsPainted(painted);
   }
 
   /** Marks the pinned/leading fragments of a slot in full-width layout (a blank, themeable band). */

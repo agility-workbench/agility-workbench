@@ -10,7 +10,7 @@ import { IRowNode } from "../../interfaces/iRowNode";
  * The contract mirrors the tooltip / cell-renderer / header-component contracts: a function form is
  * re-invoked to refresh, a class form gets `init/getGui/refresh/destroy`.
  */
-export interface ActionFrameComponentParams {
+export interface ActionFrameComponentParams<TData = any> {
   /** Raw cell value. On a group row: the column's aggregate, else the group label on the group's
    * label column, else `undefined` (the rule a copy of the cell follows). */
   value: any;
@@ -18,9 +18,9 @@ export interface ActionFrameComponentParams {
   valueFormatted?: any;
   /** The full row data object. A client-side group row has no data row of its own; branch on
    * `isGroup` and read `node` instead. */
-  data: any;
+  data: TData;
   /** The row node the frame belongs to (group or leaf). */
-  node: IRowNode;
+  node: IRowNode<TData>;
   /** True when the frame is on a group row. */
   isGroup: boolean;
   /** Row id. */
@@ -30,33 +30,33 @@ export interface ActionFrameComponentParams {
   /** The runtime column the frame belongs to. */
   colDef: Column;
   /** The grid API. */
-  api: IGridAPI;
+  api: IGridAPI<TData>;
   /** Dismiss the ActionFrame (e.g. a Save/Cancel button in the form). */
   close: () => void;
   /** Extra params from `colDef.actionFrameComponentParams`, spread in by the React adapter. */
   [key: string]: any;
 }
 
-export type ActionFrameComponentFn = (p: ActionFrameComponentParams) =>
+export type ActionFrameComponentFn<TData = any> = (p: ActionFrameComponentParams<TData>) =>
   | string
   | number
   | null
   | undefined
   | HTMLElement;
 
-export interface IActionFrameComponent {
+export interface IActionFrameComponent<TData = any> {
   /** Called once when the frame opens. */
-  init: (params: ActionFrameComponentParams) => void;
+  init: (params: ActionFrameComponentParams<TData>) => void;
   /** Must return the root element mounted into the popover. */
   getGui: () => HTMLElement;
   /** Called on updates; return true if updated in place, false to have the grid recreate it. */
-  refresh: (params: ActionFrameComponentParams) => boolean;
+  refresh: (params: ActionFrameComponentParams<TData>) => boolean;
   destroy: () => void;
 }
 
-export type ActionFrameComponentClass = new () => IActionFrameComponent;
+export type ActionFrameComponentClass<TData = any> = new () => IActionFrameComponent<TData>;
 
-export type ActionFrameComponent = ActionFrameComponentFn | ActionFrameComponentClass;
+export type ActionFrameComponent<TData = any> = ActionFrameComponentFn<TData> | ActionFrameComponentClass<TData>;
 
 export function isClassActionFrameComponent(c: ActionFrameComponent): c is ActionFrameComponentClass {
   // Same heuristic as the other component contracts: class components carry init/getGui on the

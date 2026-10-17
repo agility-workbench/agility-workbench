@@ -9,6 +9,7 @@ import {
   resolveColumnPanelOptions,
 } from "../../interfaces/gridOptions";
 import { AggregateKind, aggregateTypeLabel } from "../../interfaces/aggregate";
+import { pluralLocaleText, type GridLocaleKey, type LocaleTextResolver } from "../../interfaces/locale";
 import { MenuItem } from "../../interfaces/menuItem";
 import { Unsubscribe } from "../../events/events";
 import { MenuCoordinator } from "../../menu/coordinator";
@@ -64,10 +65,10 @@ interface WellSpec {
 const WELL_ITEM_SELECTOR = ".pte-column-panel-well-item";
 const WELL_DROP_INDICATOR = "pte-column-panel-well-drop-indicator";
 
-const SECTION_LABELS: Record<ColumnSection, string> = {
-  left: "Pinned left",
-  center: "Columns",
-  right: "Pinned right",
+const SECTION_LABELS: Record<ColumnSection, GridLocaleKey> = {
+  left: "pinnedLeft",
+  center: "columns",
+  right: "pinnedRight",
 };
 
 /**
@@ -110,6 +111,8 @@ export class ColumnPanelRenderer {
   private listStale = false;
 
   private roleUnsubscribes: Unsubscribe[] = [];
+
+  private readonly t: LocaleTextResolver = (key, values) => this.params.core.getLocaleText(key, values);
 
   constructor(private params: ColumnPanelRendererParams) {
     this.buildDOM();
@@ -215,7 +218,11 @@ export class ColumnPanelRenderer {
   }
 
   private buildDOM(): void {
-    this.panel.setAttribute("aria-label", "Column management");
+    this.titleEl.textContent = this.t("columns");
+    this.bulkVisibilityLabel.textContent = this.t("allColumns");
+    this.modifiedIndicator.textContent = this.t("modified");
+    this.resetButton.textContent = this.t("resetLayout");
+    this.panel.setAttribute("aria-label", this.t("columnManagement"));
     this.panel.id = `pte-column-panel-${this.params.core.id}`;
     this.panel.addEventListener("keydown", (event) => {
       event.stopPropagation();
@@ -226,22 +233,22 @@ export class ColumnPanelRenderer {
     });
 
     this.railButton.type = "button";
-    this.railButton.textContent = "Columns";
-    this.railButton.setAttribute("aria-label", "Open column panel");
+    this.railButton.textContent = this.t("columns");
+    this.railButton.setAttribute("aria-label", this.t("openColumnPanel"));
     this.railButton.addEventListener("click", () => this.setOpen(!this.open));
 
     this.triggerButton.type = "button";
     this.triggerTooltipDisposer = registerRendererTooltipTarget(
       this.triggerButton,
-      () => "Columns",
+      () => this.t("columns"),
       undefined,
       "left",
     );
-    this.triggerButton.setAttribute("aria-label", "Open column panel");
+    this.triggerButton.setAttribute("aria-label", this.t("openColumnPanel"));
     this.triggerButton.setAttribute("aria-controls", this.panel.id);
     const triggerIcon = span("pte-column-panel-trigger-icon", "▦");
     triggerIcon.setAttribute("aria-hidden", "true");
-    const triggerLabel = span("pte-column-panel-trigger-label", "Columns");
+    const triggerLabel = span("pte-column-panel-trigger-label", this.t("columns"));
     this.triggerButton.append(triggerIcon, triggerLabel);
     this.triggerButton.addEventListener("click", () => this.setOpen(!this.open));
     this.triggerButton.addEventListener("keydown", (event) => event.stopPropagation());
@@ -249,13 +256,13 @@ export class ColumnPanelRenderer {
     const header = div("pte-column-panel-header");
     const close = button("pte-column-panel-close", "×");
     close.type = "button";
-    close.setAttribute("aria-label", "Close column panel");
+    close.setAttribute("aria-label", this.t("closeColumnPanel"));
     close.addEventListener("click", () => this.setOpen(false));
     header.append(this.titleEl, close);
 
     this.searchInput.type = "search";
-    this.searchInput.placeholder = "Search columns…";
-    this.searchInput.setAttribute("aria-label", "Search columns");
+    this.searchInput.placeholder = this.t("searchColumnsPlaceholder");
+    this.searchInput.setAttribute("aria-label", this.t("searchColumns"));
     this.searchInput.addEventListener("input", () => this.renderList());
 
     this.bulkVisibilityCheckbox.type = "checkbox";
@@ -307,9 +314,9 @@ export class ColumnPanelRenderer {
     this.params.root.classList.toggle("pte-column-panel-open", this.enabled && this.open);
     this.panel.classList.toggle("open", this.enabled && this.open);
     this.railButton.setAttribute("aria-expanded", String(this.enabled && this.open));
-    this.railButton.setAttribute("aria-label", this.open ? "Close column panel" : "Open column panel");
+    this.railButton.setAttribute("aria-label", this.t(this.open ? "closeColumnPanel" : "openColumnPanel"));
     this.triggerButton.setAttribute("aria-expanded", String(this.enabled && this.open));
-    this.triggerButton.setAttribute("aria-label", this.open ? "Close column panel" : "Open column panel");
+    this.triggerButton.setAttribute("aria-label", this.t(this.open ? "closeColumnPanel" : "openColumnPanel"));
     this.content.setAttribute("aria-hidden", String(!this.open));
     this.params.onLayoutChange();
   }
@@ -366,7 +373,7 @@ export class ColumnPanelRenderer {
       state: this.initialState.map((item) => ({ ...item })),
       defaultState: { hidden: true, pinned: null },
     });
-    this.announce("Column layout reset");
+    this.announce(this.t("columnLayoutReset"));
   }
 
   private getPanelColumns(): PanelColumn[] {
@@ -431,8 +438,8 @@ export class ColumnPanelRenderer {
     // pinning, ordering, the bulk toggle and the reset footer would all act on a layout nobody can
     // see. The three role wells are the whole panel until the mode turns off.
     const pivoting = this.params.core.getPivotMode();
-    this.titleEl.textContent = pivoting ? "Pivot setup" : "Columns";
-    this.panel.setAttribute("aria-label", pivoting ? "Pivot setup" : "Column management");
+    this.titleEl.textContent = this.t(pivoting ? "pivotSetup" : "columns");
+    this.panel.setAttribute("aria-label", this.t(pivoting ? "pivotSetup" : "columnManagement"));
     this.searchInput.hidden = pivoting;
     this.bulkVisibility.hidden = pivoting;
     this.footerEl.hidden = pivoting;
@@ -454,7 +461,7 @@ export class ColumnPanelRenderer {
 
       const group = div("pte-column-panel-section");
       group.dataset.section = section;
-      const heading = div("pte-column-panel-section-title", SECTION_LABELS[section]);
+      const heading = div("pte-column-panel-section-title", this.t(SECTION_LABELS[section]));
       const count = span("pte-column-panel-section-count", String(sectionColumns.length));
       heading.appendChild(count);
       group.appendChild(heading);
@@ -464,7 +471,7 @@ export class ColumnPanelRenderer {
     }
 
     if (shown === 0) {
-      const empty = div("pte-column-panel-empty", query ? "No matching columns" : "No columns");
+      const empty = div("pte-column-panel-empty", this.t(query ? "noMatchingColumns" : "noColumns"));
       this.list.appendChild(empty);
     }
   }
@@ -481,7 +488,7 @@ export class ColumnPanelRenderer {
   private updateBulkVisibility(columns: PanelColumn[], filtered: boolean): void {
     const eligible = columns.filter(entry => entry.col.hideable);
     const visibleCount = eligible.filter(({ state }) => !state.hidden).length;
-    this.bulkVisibilityLabel.textContent = filtered ? "All matching columns" : "All columns";
+    this.bulkVisibilityLabel.textContent = this.t(filtered ? "allMatchingColumns" : "allColumns");
     this.bulkVisibilityCheckbox.disabled = eligible.length === 0;
     this.bulkVisibilityCheckbox.checked = eligible.length > 0 && visibleCount === eligible.length;
     this.bulkVisibilityCheckbox.indeterminate = visibleCount > 0 && visibleCount < eligible.length;
@@ -502,9 +509,9 @@ export class ColumnPanelRenderer {
       colIds: eligible.map(({ col }) => col.instanceID),
       hidden,
     });
-    const noun = eligible.length === 1 ? "column" : "columns";
-    const scope = query ? `matching ${noun}` : noun;
-    this.announce(`${eligible.length} ${scope} ${hidden ? "hidden" : "shown"}`);
+    this.announce(pluralLocaleText(this.t, query
+      ? (hidden ? "matchingColumnsHidden" : "matchingColumnsShown")
+      : (hidden ? "columnsHidden" : "columnsShown"), eligible.length));
   }
 
   private updateModifiedState(columns: PanelColumn[]): void {
@@ -581,7 +588,7 @@ export class ColumnPanelRenderer {
     header.type = "button";
     const collapsed = !forceExpanded && this.collapsedGroups.has(item.group.instanceID);
     header.setAttribute("aria-expanded", String(!collapsed));
-    header.setAttribute("aria-label", `${collapsed ? "Expand" : "Collapse"} ${item.group.label}`);
+    header.setAttribute("aria-label", this.t(collapsed ? "expandColumnGroup" : "collapseColumnGroup", { group: item.group.label }));
     const chevron = span("pte-column-panel-tree-group-chevron", collapsed ? "›" : "⌄");
     chevron.setAttribute("aria-hidden", "true");
     const label = span("pte-column-panel-tree-group-label", item.group.label);
@@ -624,18 +631,20 @@ export class ColumnPanelRenderer {
     const row = div("pte-column-panel-row");
     row.dataset.colId = col.colId;
 
-    row.draggable = col.movable;
+    // A `lockPosition` column is held at its edge: no drag, no up/down (pinning still applies).
+    const reorderable = col.movable && col.lockPosition == null;
+    row.draggable = reorderable;
 
     // Six-dot grip; a column that cannot move greys it out to match `row.draggable` above.
     const drag = span("pte-column-panel-drag icon-grip");
     drag.setAttribute("aria-hidden", "true");
-    if (!col.movable) drag.classList.add("pte-column-panel-drag-disabled");
+    if (!reorderable) drag.classList.add("pte-column-panel-drag-disabled");
 
     const checkbox = createElement("input", "pte-column-panel-checkbox");
     checkbox.type = "checkbox";
     checkbox.checked = !state.hidden;
     checkbox.disabled = !col.hideable;
-    checkbox.setAttribute("aria-label", `${state.hidden ? "Show" : "Hide"} ${col.label}`);
+    checkbox.setAttribute("aria-label", this.t(state.hidden ? "showColumn" : "hideColumn", { column: col.label }));
     checkbox.addEventListener("change", () => {
       const hidden = !checkbox.checked;
       this.params.core.dispatch({
@@ -644,7 +653,7 @@ export class ColumnPanelRenderer {
         colIds: [col.instanceID],
         hidden,
       });
-      this.announce(`${col.label} ${hidden ? "hidden" : "shown"}`);
+      this.announce(this.t(hidden ? "columnHidden" : "columnShown", { column: col.label }));
     });
 
     const label = span("pte-column-panel-label");
@@ -654,11 +663,11 @@ export class ColumnPanelRenderer {
     );
 
     const pin = createElement("select", "pte-column-panel-pin");
-    pin.setAttribute("aria-label", `Pin ${col.label}`);
+    pin.setAttribute("aria-label", this.t("pinColumn", { column: col.label }));
     [
-      ["", "Unpinned"],
-      ["left", "Pin left"],
-      ["right", "Pin right"],
+      ["", this.t("unpinned")],
+      ["left", this.t("pinLeftOption")],
+      ["right", this.t("pinRightOption")],
     ].forEach(([value, text]) => {
       const option = createElement("option");
       option.value = value;
@@ -675,17 +684,19 @@ export class ColumnPanelRenderer {
         colIds: [col.instanceID],
         pinned,
       });
-      this.announce(`${col.label} ${pinned ? `pinned ${pinned}` : "unpinned"}`);
+      this.announce(this.t(pinned === "left" ? "columnPinnedLeft" : pinned === "right" ? "columnPinnedRight" : "columnUnpinned", { column: col.label }));
     });
 
     const actions = div("pte-column-panel-order-actions");
-    const up = this.orderButton("up", `Move ${col.label} up`, index === 0 || !col.movable, () => {
+    const up = this.orderButton("up", this.t("moveItemUp", { item: col.label }), index === 0 || !reorderable
+      || sectionColumns[index - 1]?.col.lockPosition === "left", () => {
       this.reorderWithinSection(sectionColumns, index, index - 1);
     });
     const down = this.orderButton(
       "down",
-      `Move ${col.label} down`,
-      index === sectionColumns.length - 1 || !col.movable,
+      this.t("moveItemDown", { item: col.label }),
+      index === sectionColumns.length - 1 || !reorderable
+        || sectionColumns[index + 1]?.col.lockPosition === "right",
       () => this.reorderWithinSection(sectionColumns, index, index + 1),
     );
     actions.append(up, down);
@@ -711,8 +722,8 @@ export class ColumnPanelRenderer {
     const groupIndex = groups.findIndex(group => group.instanceID === col.instanceID);
     if (groupIndex >= 0) {
       strip.appendChild(this.roleChip(
-        groups.length > 1 ? `Group ${groupIndex + 1}` : "Group",
-        `Remove ${col.label} from row groups`,
+        groups.length > 1 ? this.t("groupRoleNumbered", { index: groupIndex + 1 }) : this.t("groupRole"),
+        this.t("removeFromRowGroups", { column: col.label }),
         () => this.removeGroupRole(col),
       ));
     }
@@ -721,18 +732,18 @@ export class ColumnPanelRenderer {
     const pivotIndex = pivots.findIndex(pivot => pivot.instanceID === col.instanceID);
     if (pivotIndex >= 0) {
       strip.appendChild(this.roleChip(
-        pivots.length > 1 ? `Pivot ${pivotIndex + 1}` : "Pivot",
-        `Remove ${col.label} from pivot columns`,
+        pivots.length > 1 ? this.t("pivotRoleNumbered", { index: pivotIndex + 1 }) : this.t("pivotRole"),
+        this.t("removeFromPivotColumns", { column: col.label }),
         () => this.removePivotRole(col),
       ));
     }
 
     for (const entry of core.getAggregateModel()) {
       if (entry.key !== col.instanceID) continue;
-      const typeLabel = aggregateTypeLabel(entry.type);
+      const typeLabel = aggregateTypeLabel(entry.type, this.t);
       strip.appendChild(this.roleChip(
         typeLabel,
-        `Remove ${typeLabel} aggregate from ${col.label}`,
+        this.t("removeAggregateFromColumn", { aggregate: typeLabel, column: col.label }),
         () => this.removeValueRole(col, entry.type),
       ));
     }
@@ -756,7 +767,7 @@ export class ColumnPanelRenderer {
       .map(group => group.instanceID)
       .filter(id => id !== col.instanceID);
     this.params.core.dispatch({ type: "rowGroupSet", source: "user", colIds: next });
-    this.announce(`${col.label} removed from row groups`);
+    this.announce(this.t("removedFromRowGroups", { column: col.label }));
   }
 
   private removePivotRole(col: Column): void {
@@ -766,7 +777,7 @@ export class ColumnPanelRenderer {
       .map(pivot => pivot.instanceID)
       .filter(id => id !== col.instanceID);
     this.params.core.dispatch({ type: "pivotColumnsSet", source: "user", colIds: next });
-    this.announce(`${col.label} removed from pivot columns`);
+    this.announce(this.t("removedFromPivotColumns", { column: col.label }));
   }
 
   /** Retype one Values entry in place, keeping its position in the generated column order. */
@@ -783,14 +794,14 @@ export class ColumnPanelRenderer {
         at === index || other.key !== retyped.key || other.type !== retyped.type);
     this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
     const label = this.params.core.getColumnModel().getById(entry.key)?.label ?? entry.key;
-    this.announce(`${label} aggregate changed to ${aggregateTypeLabel(type)}`);
+    this.announce(this.t("aggregateChangedTo", { column: label, aggregate: aggregateTypeLabel(type, this.t) }));
   }
 
   private removeValueRole(col: Column, type: AggregateKind): void {
     const next = this.params.core.getAggregateModel()
       .filter(entry => !(entry.key === col.instanceID && entry.type === type));
     this.params.core.dispatch({ type: "aggregateModelSet", source: "user", aggregateModels: next });
-    this.announce(`${aggregateTypeLabel(type)} aggregate removed from ${col.label}`);
+    this.announce(this.t("aggregateRemovedFrom", { aggregate: aggregateTypeLabel(type, this.t), column: col.label }));
   }
 
   /**
@@ -841,7 +852,7 @@ export class ColumnPanelRenderer {
       toIndex: targetIndex,
       toSection: section,
     });
-    this.announce(`${moved.col.label} moved to position ${to + 1} of ${columns.length}`);
+    this.announce(this.t("movedToPosition", { item: moved.col.label, position: to + 1, total: columns.length }));
   }
 
   private announce(message: string): void {
@@ -865,8 +876,8 @@ export class ColumnPanelRenderer {
     this.wells.append(
       this.buildWell({
         role: "group",
-        title: "Row groups",
-        addLabel: "Add row group",
+        title: this.t("rowGroupsWell"),
+        addLabel: this.t("addRowGroup"),
         entries: core.getRowGroupColumns().map(col => ({
           label: col.label,
           remove: () => this.removeGroupRole(col),
@@ -876,8 +887,8 @@ export class ColumnPanelRenderer {
       }),
       this.buildWell({
         role: "pivot",
-        title: "Column labels",
-        addLabel: "Add pivot column",
+        title: this.t("columnLabelsWell"),
+        addLabel: this.t("addPivotColumn"),
         entries: core.getPivotColumns().map(col => ({
           label: col.label,
           remove: () => this.removePivotRole(col),
@@ -887,15 +898,15 @@ export class ColumnPanelRenderer {
       }),
       this.buildWell({
         role: "value",
-        title: "Values",
-        addLabel: "Add value",
+        title: this.t("valuesWell"),
+        addLabel: this.t("addValue"),
         entries: core.getAggregateModel().map((entry, index) => {
           const col = core.getColumnModel().getById(entry.key);
-          const typeLabel = aggregateTypeLabel(entry.type);
+          const typeLabel = aggregateTypeLabel(entry.type, this.t);
           // Nothing to pick from when the column admits a single type — the row stays a plain label.
           const choices = col ? this.params.menuCoordinator.getAggregateChoices(col.instanceID) : [];
           return {
-            label: `${col?.label ?? entry.key} — ${typeLabel}`,
+            label: this.t("valueEntry", { column: col?.label ?? entry.key, aggregate: typeLabel }),
             remove: () => { if (col) this.removeValueRole(col, entry.type); },
             ...(col && choices.length > 1
               ? {
@@ -926,13 +937,13 @@ export class ColumnPanelRenderer {
     well.appendChild(header);
 
     if (params.entries.length === 0) {
-      well.appendChild(div("pte-column-panel-well-empty", "None"));
+      well.appendChild(div("pte-column-panel-well-empty", this.t("wellEmpty")));
       return well;
     }
 
     const items = div("pte-column-panel-well-items");
     items.setAttribute("role", "list");
-    items.setAttribute("aria-label", `${params.title} order`);
+    items.setAttribute("aria-label", this.t("wellOrder", { well: params.title }));
     params.entries.forEach((entry, index) => {
       const item = div("pte-column-panel-well-item");
       item.setAttribute("role", "listitem");
@@ -942,19 +953,19 @@ export class ColumnPanelRenderer {
       const label = span("pte-column-panel-well-item-label", entry.label);
       this.listTooltipDisposers.push(registerRendererTooltipTarget(label, () => entry.label));
       const actions = div("pte-column-panel-order-actions");
-      const up = this.orderButton("up", `Move ${entry.label} up`, index === 0, () => {
+      const up = this.orderButton("up", this.t("moveItemUp", { item: entry.label }), index === 0, () => {
         this.moveWellEntry(params, index, index - 1);
       });
       const down = this.orderButton(
         "down",
-        `Move ${entry.label} down`,
+        this.t("moveItemDown", { item: entry.label }),
         index === params.entries.length - 1,
         () => this.moveWellEntry(params, index, index + 1),
       );
       actions.append(up, down);
       const remove = button("pte-column-panel-well-remove", "×");
       remove.type = "button";
-      remove.setAttribute("aria-label", `Remove ${entry.label} from ${params.title}`);
+      remove.setAttribute("aria-label", this.t("removeFromWell", { item: entry.label, well: params.title }));
       remove.addEventListener("click", entry.remove);
       item.append(grip, this.wellItemLabelSlot(item, label, entry.openMenu), actions, remove);
       this.bindWellItemDrag(item, params.role, index, entry.label);
@@ -1048,7 +1059,7 @@ export class ColumnPanelRenderer {
     if (from === to || from < 0 || to < 0 || from >= count || to >= count) return;
     const label = params.entries[from].label;
     params.reorder(from, to);
-    this.announce(`${label} moved to position ${to + 1} of ${count} in ${params.title}`);
+    this.announce(this.t("movedToPositionInWell", { item: label, position: to + 1, total: count, well: params.title }));
   }
 
   private clearWellDragState(): void {
@@ -1063,7 +1074,7 @@ export class ColumnPanelRenderer {
 
   private openWellAddMenu(anchorEl: HTMLElement, ariaLabel: string, items: MenuItem[]): void {
     if (items.length === 0) {
-      this.announce("No columns available to add");
+      this.announce(this.t("noColumnsToAdd"));
       return;
     }
     // The items carry complete payloads, so the execution context is nominal (no command the
@@ -1087,12 +1098,12 @@ export class ColumnPanelRenderer {
   ): void {
     const items: MenuItem[] = choices.map(choice => ({
       id: choice.id,
-      label: aggregateTypeLabel(choice.type),
+      label: aggregateTypeLabel(choice.type, this.t),
       ...(choice.icon ? { left: choice.icon } : {}),
       ...(choice.type === current ? { right: "icon-check" } : {}),
       payload: { agg: choice.type },
     }));
-    this.openWellMenu(anchorEl, `Aggregate function for ${col.label}`, items, (item) => {
+    this.openWellMenu(anchorEl, this.t("aggregateFunctionFor", { column: col.label }), items, (item) => {
       const type = item.payload?.agg as AggregateKind | undefined;
       if (type) this.setValueRoleType(index, type);
     });
@@ -1186,7 +1197,7 @@ export class ColumnPanelRenderer {
   }
 
   private buildRootDropZone(section: ColumnSection): HTMLDivElement {
-    const dropZone = div("pte-column-panel-root-dropzone", "Drop here to move branch to section end");
+    const dropZone = div("pte-column-panel-root-dropzone", this.t("dropToSectionEnd"));
     dropZone.addEventListener("dragover", (event) => {
       const source = this.getPanelColumns()
         .find(({ col }) => col.instanceID === this.draggedColId);
@@ -1213,7 +1224,7 @@ export class ColumnPanelRenderer {
   }
 
   private bindDrag(row: HTMLDivElement, entry: PanelColumn, section: ColumnSection): void {
-    if (!entry.col.movable) return;
+    if (!entry.col.movable || entry.col.lockPosition != null) return;
     row.addEventListener("dragstart", (event) => {
       this.draggedColId = entry.col.instanceID;
       row.classList.add("dragging");

@@ -1,4 +1,5 @@
 import type { SheetTabColor } from "../../interfaces/gridView";
+import type { GridLocaleKey, LocaleTextResolver } from "../../interfaces/locale";
 
 /**
  * The built-in palette behind the sheet tab menu's "Change color", and the swatch that presents an
@@ -29,6 +30,11 @@ export const SHEET_COLORS: readonly SheetTabColor[] = [
   { name: "Pink", color: "#ec4899" },
   { name: "Gray", color: "#64748b" },
 ];
+
+/** The built-in palette with its names localized (`sheetColorRed` … `sheetColorGray`). */
+export function localizedSheetColors(t: LocaleTextResolver): SheetTabColor[] {
+  return SHEET_COLORS.map(entry => ({ ...entry, name: t(`sheetColor${entry.name}` as GridLocaleKey) }));
+}
 
 /**
  * The chip for the "Custom…" entry: the sheet's own colour when it is already one the palette does

@@ -1,4 +1,5 @@
 import { SortDir } from "../interfaces/sort";
+import { defaultLocaleText, pluralLocaleText, type LocaleTextResolver } from "../interfaces/locale";
 
 /**
  * Screen-reader announcements for grid-level state changes.
@@ -27,28 +28,30 @@ export interface SelectionSummary {
   range: { rows: number; columns: number } | null;
 }
 
-const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
-
 /**
  * Describe a selection, or `null` when there is nothing worth saying. A single focused cell returns
  * `null` on purpose: `aria-activedescendant` already moves AT's focus there and it gets read out, so
  * "1 cell selected" would double up on every arrow keypress.
  */
-export function describeSelection(summary: SelectionSummary): string | null {
-  if (summary.rows > 0) return `${plural(summary.rows, "row")} selected`;
-  if (summary.columns > 0) return `${plural(summary.columns, "column")} selected`;
+export function describeSelection(summary: SelectionSummary, t: LocaleTextResolver = defaultLocaleText): string | null {
+  if (summary.rows > 0) return pluralLocaleText(t, "rowsSelected", summary.rows);
+  if (summary.columns > 0) return pluralLocaleText(t, "columnsSelected", summary.columns);
   const range = summary.range;
   if (range && range.rows * range.columns > 1) {
-    return `${plural(range.rows, "row")} by ${plural(range.columns, "column")} selected`;
+    return t("rangeSelected", {
+      rows: pluralLocaleText(t, "rangeRows", range.rows),
+      columns: pluralLocaleText(t, "rangeColumns", range.columns),
+    });
   }
   return null;
 }
 
 /** Describe the sort model. An empty model means the user just removed the last sort. */
-export function describeSort(items: Array<{ label: string; dir: SortDir }>): string {
-  if (items.length === 0) return "Sorting cleared";
-  const parts = items.map(item => `${item.label} ${item.dir === "asc" ? "ascending" : "descending"}`);
-  return `Sorted by ${parts.join(", then ")}`;
+export function describeSort(items: Array<{ label: string; dir: SortDir }>, t: LocaleTextResolver = defaultLocaleText): string {
+  if (items.length === 0) return t("sortingCleared");
+  const parts = items.map(item =>
+    t(item.dir === "asc" ? "sortedColumnAscending" : "sortedColumnDescending", { column: item.label }));
+  return t("sortedBy", { columns: parts.join(t("sortedBySeparator")) });
 }
 
 export class GridAnnouncer {
@@ -58,7 +61,7 @@ export class GridAnnouncer {
   private last = "";
   private hadSelection = false;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, private readonly t: LocaleTextResolver = defaultLocaleText) {
     this.el = document.createElement("div");
     this.el.className = "pte-grid-sr-announcer";
     this.el.setAttribute("role", "status");
@@ -89,7 +92,7 @@ export class GridAnnouncer {
   }
 
   selectionChanged(summary: SelectionSummary): void {
-    const message = describeSelection(summary);
+    const message = describeSelection(summary, this.t);
     if (message) {
       this.hadSelection = true;
       this.announce(message);
@@ -99,16 +102,16 @@ export class GridAnnouncer {
     // area of a grid that never had a selection would announce "Selection cleared".
     if (this.hadSelection) {
       this.hadSelection = false;
-      this.announce("Selection cleared");
+      this.announce(this.t("selectionCleared"));
     }
   }
 
   sortChanged(items: Array<{ label: string; dir: SortDir }>): void {
-    this.announce(describeSort(items));
+    this.announce(describeSort(items, this.t));
   }
 
   loadingChanged(isLoading: boolean, rowCount: number): void {
-    this.announce(isLoading ? "Loading data" : `${plural(rowCount, "row")} loaded`);
+    this.announce(isLoading ? this.t("loadingAnnouncement") : pluralLocaleText(this.t, "rowsLoaded", rowCount));
   }
 
   destroy(): void {

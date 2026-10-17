@@ -31,9 +31,11 @@ const sidebars: SidebarsConfig = {
         "examples/tooltips",
         "examples/action-frames",
         "examples/menus",
+        "examples/touch",
         "examples/toolbar-and-views",
         "examples/export",
         "examples/theming",
+        "examples/localization",
       ],
     },
     {

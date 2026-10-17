@@ -14,7 +14,7 @@ types widen component slots to accept their native component classes.
 | --- | --- |
 | `colId` / `key` / `label` | Identity, data field, and display name |
 | `type` | String, number, date, boolean, or currency behavior |
-| `valueGetter` | Compute the raw value |
+| `valueGetter` | Compute the raw value on a leaf row: receives the row node, so the row is `node.data` |
 | `groupValueGetter` | The value on a group row when the column has no aggregate: receives `{ node, data, aggregates }` (`data` server-side only); never runs on a leaf |
 | `valueFormatter` / `formatterOptions` | Format display and export |
 | `valueParser` | Convert committed text; built-in by `type` when omitted; return `REJECT` to refuse |
@@ -69,6 +69,12 @@ a user resize or an explicit fit-to-content replaces it.
 generated header. `suppressColumnPanel` omits a column only from the
 management drawer.
 
+| Field | Purpose |
+| --- | --- |
+| `lockPosition` | `true` / `"left"` holds the column at the left edge of its section, `"right"` at the right edge. It cannot be dragged or moved (header, column panel, `api.moveColumn`), other columns never displace it, and `applyColumnState`, saved views and `setColumnDefs` put it back at its edge. Pinning still applies (locked within the pinned section). On a group child it locks within the group; on a group definition it locks the group. See [Locking a column's position](../examples/columns.mdx#locking-a-columns-position) |
+| `wrapHeaderText` | The header label wraps onto several lines instead of being truncated; icons and menu keep their place. Without `autoHeaderHeight` a wrapped label is clipped at the configured height |
+| `autoHeaderHeight` | The header level holding this column (or group) grows to fit its label: the tallest such label on the level plus padding, never below the configured `headerHeight` / `leafHeaderHeight` / `parentHeaderHeight`. Re-measured on width, column, label, header-height, theme and font changes. See [Wrapping header text](../examples/columns.mdx#wrapping-header-text-and-auto-header-height) |
+
 ## Sort and filter
 
 Columns may define `sort`, `sortIndex`, `sortingOrder`, `sortIconVisibility`,
@@ -80,7 +86,7 @@ and a custom `comparator`. `filter` selects a built-in panel or custom matcher
 
 | Field | Content |
 | --- | --- |
-| `cellRenderer` / `cellEditor` | Cell presentation and editing; the renderer runs on group rows too (`isGroup: true`, `value` = the group cell value), except on label columns |
+| `cellRenderer` / `cellEditor` | Cell presentation and editing; the renderer runs on group rows too (`isGroup: true`, `value` = the group cell value), except on label columns. `cellRenderer` also takes a built-in name: `"link"`, `"image"`, `"progress"`, `"rating"` (options in `cellRendererParams`, see [Built-in renderers](../examples/rendering.mdx#built-in-renderers)) or `"text"` (plain text, opting a boolean column out of its checkbox) |
 | `headerComponent` | Header content while retaining controls |
 | `headerCellComponent` | Entire header cell except resize handle |
 | `tooltipComponent` / `headerTooltip` | Body and header floating content |
@@ -92,7 +98,8 @@ A header component is as tall as the header level it sits on: `leafHeaderHeight`
 for a leaf column, `parentHeaderHeight` for each group level (both default to
 `headerHeight`, 43px), plus any extra levels the cell spans. Taller content is
 clipped, so a component that needs more room needs a taller option, not CSS on
-the component. The header does not size itself to its content.
+the component — or `autoHeaderHeight` on the column, which measures the
+component's own elements (the children of its root) and grows the level to fit.
 
 ## Conditional presentation
 
@@ -109,6 +116,65 @@ Set it to `false` to opt out completely, or use an object such as
 `{ tooltip: false }`. Column classes compose with row defaults, column inline-style
 properties override conflicts, and explicit column tooltip fields override the corresponding row
 defaults.
+
+## Typing your rows
+
+Every column type takes the row type as an optional parameter. Without it the row is
+`any`, exactly as before; with it, each callback that receives a row is typed. The published
+types use `NoInfer`, so they need TypeScript 5.4 or later.
+
+```ts
+interface Trade {
+  id: string;
+  symbol: string;
+  price: number;
+  quantity: number;
+}
+
+const columnDefs: ColDef<Trade>[] = [
+  { key: "symbol", label: "Symbol" },
+  {
+    colId: "notional",
+    label: "Notional",
+    type: ColumnType.NUMBER,
+    // The row node: `node.data` is a `Trade`.
+    valueGetter: (node) => node.data.price * node.data.quantity,
+    cellClass: ({ data }) => (data.price < 0 ? "negative" : undefined),
+  },
+];
+```
+
+The row type reaches `valueGetter` (an `IRowNode<Trade>`), `cellClass`, `cellStyle`,
+`colSpan`, `tooltipValueGetter`, `valueFormatter` / `valueParser` (their `row` node),
+`comparator`, and the params of cell renderers (`node`), editors (`row`), tooltips
+(`data`) and ActionFrames (`data`). A cell renderer's `data` stays `any`: on a column
+cell it is the row node, so read the typed row off `node.data`. Cell values stay
+`any`.
+
+`GridOptions<Trade>`, `IGridAPI<Trade>` and the event payloads take the same parameter
+(`api.getSelectedRows()` returns `Trade[]`, `onCellClicked` receives `data: Trade`).
+Pass it once where the grid is created and it flows to the rest:
+
+```ts
+const api = createGrid<Trade>(container, { columnDefs, rowData: trades });
+```
+
+```tsx
+<Grid<Trade> columnDefs={columnDefs} rowData={trades} />
+```
+
+```ts
+// Angular: the row type is inferred from a [columnDefs] binding typed NgColDef<Trade>[],
+// and a component holding the grid can type it as AwbGrid<Trade>.
+readonly columnDefs: NgColDef<Trade>[] = [/* … */];
+readonly grid = viewChild.required<AwbGrid<Trade>>(AwbGrid);
+```
+
+The row type is taken from typed column definitions or an explicit type argument,
+never from `rowData`, so an untyped grid (or one handed an empty array) keeps `any`.
+`ReactColDef<Trade>` and `NgColDef<Trade>` work the same way. On a client-side group
+row `data` is a placeholder object rather than a `Trade`; check `isGroup` or
+`node.isGroup` first where group rows can reach a callback.
 
 ## Groups
 

@@ -11,6 +11,9 @@ export interface IRowModelOnRowsParams {
   visibleEnd: number;       // index of last row in viewport
   rowCount?: number;          // if known
   storeInfo?: any;            // optional (block cache / group state)
+  // Server-side: these rows follow a change to the loaded row set itself — a block landed, or a
+  // purge dropped rows — rather than a re-flatten of rows already held. Drives `rowDataUpdated`.
+  rowSetChanged?: boolean;
 }
 
 export interface IRowModelOnAggregatesParams {
