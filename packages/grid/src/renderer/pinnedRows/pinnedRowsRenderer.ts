@@ -17,6 +17,7 @@ import {
 } from "../body/rowPresentation";
 import {
   ActiveDescendantTracker, markPresentational, setAriaSelected, stampGridCellAria, stampRowHierarchyAria, stitchAriaRow,
+  headerAriaRowCount,
 } from "../aria";
 
 interface BandElements {
@@ -555,7 +556,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
         const node = core.getDisplayedPinnedRow(position, rowIndex);
         const bodyViewIdx = node && node.viewIndex >= 0 ? core.getViewIndexForRowId(node.id) : null;
         if (bodyViewIdx != null) {
-          row.setAttribute("aria-rowindex", String(core.getRowNumberForViewIndex(bodyViewIdx) + 1));
+          row.setAttribute("aria-rowindex", String(core.getRowNumberForViewIndex(bodyViewIdx) + headerAriaRowCount(core.options)));
         } else {
           row.setAttribute("aria-rowindex", String(next));
           next++;

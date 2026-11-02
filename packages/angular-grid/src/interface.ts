@@ -95,6 +95,13 @@ export interface ICellEditorNgComp<P extends ICellEditorParams = ICellEditorPara
   focus?(): void;
   /** Return true to abort opening the editor. */
   isCancelBeforeStart?(): boolean;
+  /** Return true to turn a commit (Enter, Tab, blur, `api.stopEditing()`) into a cancel. */
+  isCancelAfterEnd?(): boolean;
+  /**
+   * Return a message to refuse a commit: the editor stays open with the cell marked invalid and
+   * the message shown and announced. Return null/undefined/"" to let the commit proceed.
+   */
+  getValidationMessage?(): string | null | undefined;
 }
 
 /** An Angular component class usable as a cell renderer / tooltip / ActionFrame / editor / header. */

@@ -3,6 +3,7 @@ import { CellClassParams } from "../../interfaces/column";
 import { IGridAPI } from "../../interfaces/iGridAPI";
 import { IRowNode } from "../../interfaces/iRowNode";
 import { INDENT_PER_LEVEL, renderGroupCell, renderTreeCell } from "./groupCellRenderer";
+import { isTreeAggregateCell } from "../../core/groupCellValue";
 import {
   CellRefreshReason, CellRenderer, CellRendererParams, createRendererRuntime, getCellRendererParams, RendererRecord,
 } from "../renderer";
@@ -225,6 +226,28 @@ export class BodyCellRenderer {
     cell.classList.remove("pte-group-cell");
     cell.style.paddingInlineStart = "";
 
+    // A tree parent's aggregated column paints the aggregate over its leaves, as a group row's
+    // value column does: the column's own renderer with the aggregate, else the formatted text
+    // (never the boolean checkbox — an aggregate is not the row's flag).
+    if (isTreeAggregateCell(col, row)) {
+      const { value, formatted } = this.api.getCore().getGroupCellValue(col, row);
+      if (col.cellRenderer) {
+        const params = getCellRendererParams(
+          value, formatted, row, viewIndex, col, cell, this.api, refreshReason, rowPresentation,
+        );
+        this.mountRenderer(cell, col, col.cellRenderer, params, cellRendererMap);
+        return;
+      }
+      cell.classList.remove(BodyCellRenderer.CUSTOM_RENDERER_CELL_CLASS);
+      const rec: RendererRecord | undefined = cellRendererMap.get(col.instanceID);
+      if (rec) {
+        rec.runtime.destroy();
+        cellRendererMap.delete(col.instanceID);
+      }
+      cell.textContent = formatted;
+      return;
+    }
+
     const rawValue = col.getValue(row);
     const displayValue = col.formatValue(rawValue, row);
     // A boolean column without a renderer of its own draws the built-in checkbox. Leaf rows only:
@@ -326,7 +349,7 @@ export class BodyCellRenderer {
   ): CellClassParams {
     const isGroup = !!row.isGroup;
     return {
-      value: isGroup ? this.api.getCore().getGroupCellValue(col, row).value : col.getValue(row),
+      value: this.api.getCore().getNodeCellValue(col, row),
       data: row.data,
       rowId: row.id,
       rowIndex: viewIndex,

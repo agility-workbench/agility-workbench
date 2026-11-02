@@ -391,6 +391,7 @@ export class ExportRenderer {
         : undefined;
 
     const { pinnedTopRows, pinnedBottomRows } = this.pinnedRowsForExport(scope);
+    const treeAggregates = serverSide.serverSide ? {} : this.treeAggregateExportConfig(groupRoots);
 
     return {
       rows: leafData,
@@ -413,10 +414,32 @@ export class ExportRenderer {
         : undefined,
       groupMode: options.groupMode ?? "tree",
       ...serverSide,
+      ...treeAggregates,
       // Leaf-row colSpan is honored in grouped exports too; full-width (group) rows keep their
       // existing SUBTOTAL-header layout, so only getCellColSpan is meaningful here.
       ...this.buildSpanResolvers(),
     };
+  }
+
+  /**
+   * Client-side tree data whose parents carry aggregates: the real parents by row data (so the
+   * CSV and the Excel rows write their aggregated cells as the grid shows them) and the grid
+   * footer's current values (so the sheet's footer says what the screen's says). Empty otherwise.
+   */
+  private treeAggregateExportConfig(roots: IRowNode[]): Pick<ExportConfig, "treeParents" | "footerValues"> {
+    if (!this.params.core.getOptions().treeData) return {};
+    const treeParents = new Map<object, IRowNode>();
+    let anyAggregates = false;
+    const walk = (node: IRowNode) => {
+      if (node.aggregateValues && node.children?.length) {
+        anyAggregates = true;
+        if (!node.isGroup && node.data && typeof node.data === "object") treeParents.set(node.data, node);
+      }
+      for (const child of node.children ?? []) walk(child);
+    };
+    for (const root of roots) walk(root);
+    if (!anyAggregates) return {};
+    return { treeParents, footerValues: this.params.core.getRowModel().getAggregateValues() };
   }
 
   /**

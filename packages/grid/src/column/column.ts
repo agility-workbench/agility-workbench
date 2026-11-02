@@ -1,5 +1,6 @@
 import { FormatterOptions, FormatterOptionsParams, getFormatterByType, resolveFormatterOptions, ValueFormatterParams, ValueParserParams } from "./formatters";
 import { parseTextByType } from "./parsers";
+import { readKeyPath } from "./keyPath";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { builtInRendererShowsNoText, resolveCellRendererAlias } from "../cellRenderers/aliases";
@@ -10,7 +11,7 @@ import type { TooltipColumnOptions, ActionFrameOptions, RowPresentation } from "
 import { CellEditor } from "../renderer/editing/cellEditor";
 import { IRowNode } from "../interfaces/iRowNode";
 import type { AggregateKind } from "../interfaces/aggregate";
-import { CellClass, CellClassParams, CellStyle, ColDef, ColumnMenuItemsGetter, ColumnType, GroupValueGetterParams } from "../interfaces/column";
+import { CellClass, CellClassParams, CellStyle, ColDef, ColumnMenuItemsGetter, ColumnType, EditableCallbackParams, GroupValueGetterParams, ValueSetterParams } from "../interfaces/column";
 import { ComparatorFn, Filter, FilterParams } from "../interfaces/filter";
 import type { SortDir } from "../interfaces/sort";
 import type { SortingOrder, SortIconVisibility } from "../interfaces/gridOptions";
@@ -46,7 +47,12 @@ export class Column {
   valueParser?: (params: ValueParserParams) => any;
   cellEditor?: CellEditor;
   cellEditorParams?: any;
+  // Whether the column can edit at all: true for `editable: true` and for a function (decided per
+  // row by isCellEditable). Column-level gates (the fill handle's grip) read this.
   editable: boolean = false;
+  // `ColDef.editable` as a function: the per-row decision isCellEditable consults.
+  editableCallback?: (params: EditableCallbackParams) => boolean;
+  valueSetter?: (params: ValueSetterParams) => boolean;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);
   // The column's own renderer; a built-in alias is resolved to its class and a `"text"` alias is
   // normalized away (see textRendererRequested).
@@ -186,7 +192,9 @@ export class Column {
     this.valueParser = col.valueParser;
     this.cellEditor = col.cellEditor;
     this.cellEditorParams = col.cellEditorParams;
-    this.editable = isTrue(col.editable);
+    this.editableCallback = typeof col.editable === "function" ? col.editable : undefined;
+    this.editable = this.editableCallback != null || isTrue(col.editable);
+    this.valueSetter = col.valueSetter;
     this.formatterOptions = col.formatterOptions;
     this.textRendererRequested = col.cellRenderer === "text";
     // A built-in alias ("link", "image", ...) resolves to its class; "text" (and an unknown name)
@@ -370,7 +378,8 @@ export class Column {
     if (this.valueGetter) {
       return this.valueGetter(row);
     }
-    return row.data[this.key];
+    // A dot-path key ("address.city") reads the nested value unless the row has that literal key.
+    return readKeyPath(row.data, this.key);
   }
 
   formatValue(value: any, row: IRowNode): string {
@@ -436,11 +445,21 @@ export class Column {
   // Whether a cell in this column may be edited. Internal columns (e.g. row numbers) are never
   // editable. A row presentation may veto editing, unless this column explicitly opts out of that
   // field; row `editable: true` never enables a column whose own editable flag is false.
-  isCellEditable(_row?: IRowNode, rowPresentation?: RowPresentation): boolean {
-    return this.editable
-      && !this.isInternal()
-      && !_row?.isGroup
-      && (!this.inheritsRowPresentation("editable") || rowPresentation?.editable !== false);
+  // A function `editable` decides per row; it never sees a group row, and without a row (a
+  // column-level question) it cannot answer, so the cell is not editable.
+  isCellEditable(row?: IRowNode, rowPresentation?: RowPresentation): boolean {
+    if (!this.editable || this.isInternal() || row?.isGroup) return false;
+    if (this.inheritsRowPresentation("editable") && rowPresentation?.editable === false) return false;
+    const callback = this.editableCallback;
+    if (!callback) return true;
+    if (!row) return false;
+    return callback({
+      node: row,
+      data: row.data,
+      colDef: this.col,
+      colId: this.colId,
+      value: this.getValue(row),
+    }) === true;
   }
 
   duplicate(): Column {
@@ -468,6 +487,8 @@ export class Column {
     dup.cellClass = this.cellClass;
     dup.cellStyle = this.cellStyle;
     dup.editable = this.editable;
+    dup.editableCallback = this.editableCallback;
+    dup.valueSetter = this.valueSetter;
     dup.showColumnMenu = this.showColumnMenu;
     dup.columnContextMenu = this.columnContextMenu;
     dup.columnMenu = this.columnMenu;

@@ -52,8 +52,12 @@ export interface HeaderGeometry {
   readonly levelCount: number;
   /** Per-level pixel heights, top level first; the last entry is the leaf level. */
   readonly levels: readonly number[];
-  /** Height of the whole header: the sum of `levels` (`(levelCount - 1) * parentHeaderHeight +
-   * leafHeaderHeight` unless measured content raised a level). */
+  /** Height of the column-header levels alone: the sum of `levels` (`(levelCount - 1) *
+   * parentHeaderHeight + leafHeaderHeight` unless measured content raised a level). */
+  readonly levelsTotal: number;
+  /** Height of the floating filter row under the levels (`GridOptions.floatingFilter`); 0 when off. */
+  readonly floatingFilter: number;
+  /** Height of the whole header wrapper: `levelsTotal + floatingFilter`. */
   readonly total: number;
   /** Sum of the levels `from`..`to`, inclusive (0 when the range is empty). */
   sumLevels(from: number, to: number): number;
@@ -81,11 +85,16 @@ export interface HeaderGeometry {
  * autoHeaderHeight`, see {@link autoHeaderLevelHeights}) reaches the geometry, so every consumer —
  * wrapper, sections, cells, body frame — still reads one set of numbers. Entries past `levelCount`
  * are ignored; a missing or non-finite entry leaves its level at the configured height.
+ *
+ * `floatingFilterHeight` is the floating filter row under the levels (0, the default, when the row
+ * is off). It is not a level: no header cell spans it and `cellHeights`/`containerLevels` ignore
+ * it; only `total` — the wrapper and the body's height budget — includes it.
  */
 export function headerGeometry(
   levelCount: number,
   heights: Pick<ResolvedHeaderHeights, "leafHeaderHeight" | "parentHeaderHeight">,
   minLevelHeights?: readonly (number | undefined)[] | null,
+  floatingFilterHeight = 0,
 ): HeaderGeometry {
   const count = Math.max(0, Math.floor(levelCount));
   const levels = Array.from({ length: count }, (_, i) => {
@@ -98,11 +107,16 @@ export function headerGeometry(
     for (let i = Math.max(0, from); i <= Math.min(count - 1, to); i++) sum += levels[i];
     return sum;
   };
-  const total = sumLevels(0, count - 1);
+  const levelsTotal = sumLevels(0, count - 1);
+  const floatingFilter = Number.isFinite(floatingFilterHeight) && floatingFilterHeight > 0
+    ? Math.round(floatingFilterHeight)
+    : 0;
   return {
     levelCount: count,
     levels,
-    total,
+    levelsTotal,
+    floatingFilter,
+    total: levelsTotal + floatingFilter,
     sumLevels,
     cellHeights(depth, levelsBelow) {
       const span = Math.max(1, Math.min(count, levelsBelow));

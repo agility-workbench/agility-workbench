@@ -52,6 +52,12 @@ The root element carries `role="grid"` with:
   visual order on purpose: putting the top band first would shift every body
   row's number away from the row number the user sees. A body row pinned
   into a band (`isRowPinned`, `api.setRowPinned`) keeps its body number.
+- The [floating filter row](./examples/filtering.mdx#floating-filters), while
+  `floatingFilter` shows it, is a second header row: header 1, floating
+  filters 2, and every body row its row number plus two (the bands and the
+  aggregate row follow one later too, and `aria-rowcount` grows by one). Its
+  cells are `gridcell`s with the column's `aria-colindex`, and each control is
+  labelled after its column ("Region filter").
   While a server-side total is still an estimate, `aria-rowcount` is `-1` and
   the rows after the body carry no index.
 - Sticky group headers are second copies of body rows that stay visible at
@@ -84,6 +90,13 @@ technology's reading position without ever moving real focus. The focused
 cell can additionally be outlined visually with `highlightActiveCell`, and
 the grid's own focus ring is drawn inset so it survives `overflow: hidden`
 ancestors.
+
+The [floating filter row](./examples/filtering.mdx#floating-filters) is the
+exception: its inputs, selects and summary buttons take real DOM focus.
+ArrowDown from a column header enters that column's control; Escape (or
+ArrowUp from a text box or summary) hands focus back to the grid root with the
+header cursor on the column; Tab and Shift+Tab move between the controls in
+column order.
 
 ## State semantics
 

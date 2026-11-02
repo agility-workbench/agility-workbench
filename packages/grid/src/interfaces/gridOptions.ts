@@ -1,3 +1,4 @@
+import type { ClipboardOptions } from "./clipboard";
 import type { AggregateFunction } from "./aggregate";
 import { RowModelType } from "./iRowModel";
 import { IServerSideDataSource } from "./serverSide";
@@ -79,6 +80,36 @@ export interface CellValueChangedParams {
  * for text its type cannot hold (`"abc"` into a number column).
  */
 export const REJECT: unique symbol = Symbol("agility-workbench-grid/reject-commit");
+
+/** A refusal that carries a message for the user; built by {@link reject}. */
+export interface CellRejection {
+  readonly reject: typeof REJECT;
+  /** Shown on the invalid cell (its tooltip) and announced to screen readers. */
+  readonly message?: string;
+}
+
+/**
+ * Refuse a write with a message — `REJECT` with words. Return it from a column's `valueParser` or
+ * from {@link GridOptions.onBeforeCellCommit}: the write is vetoed exactly as with `REJECT`, and an
+ * editor commit keeps the editor open with the cell marked invalid and `message` shown on it and
+ * announced. Batch writes (paste, fill, clear, `setCellValue`) skip the cell as with `REJECT`.
+ */
+export function reject(message?: string): CellRejection {
+  return Object.freeze({ reject: REJECT, message });
+}
+
+/** Whether a parser or hook result refuses the write: `REJECT` or a {@link reject} result. */
+export function isRejection(value: unknown): value is typeof REJECT | CellRejection {
+  return value === REJECT
+    || (typeof value === "object" && value !== null && (value as CellRejection).reject === REJECT);
+}
+
+/** The message a refusal carries, if any. */
+export function rejectionMessage(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const message = (value as CellRejection).message;
+  return typeof message === "string" && message !== "" ? message : undefined;
+}
 
 /** Write paths that run the pre-commit hook. Undo/redo replay already-accepted values and skip it. */
 export type CellCommitSource = Exclude<CellValueChangeSource, "undo" | "redo">;
@@ -345,6 +376,15 @@ export interface TreeDataCommonOptions<Row = any> {
    * the keyboard cursor is. Defaults to false.
    */
   enableKeyboardNavigationModeSwitch?: boolean;
+  /**
+   * What a column or quick filter keeps of the tree. False (the default) keeps every row that
+   * matches plus the ancestors needed to reach it; a matching parent shows only the children that
+   * match themselves. True also keeps every descendant of a matching row, matching or not, so
+   * filtering on a parent shows its whole subtree. Kept descendants count as included rows for
+   * the parents' aggregates. Expansion (`groupDefaultExpanded`, remembered state) is unaffected.
+   * Client-side tree modes only (`"server"` ignores it); fixed at creation.
+   */
+  filterIncludesDescendants?: boolean;
 }
 
 /**
@@ -1303,9 +1343,11 @@ export interface GridOptions<TData = any> {
    * Pre-commit hook run synchronously before any user-initiated cell write — editor commits,
    * `setCellValue`, and paste/cut/clear batches (per cell). It runs *after* the column's
    * `valueParser`, so `params.value` is the proposed stored form. Return:
-   *   - {@link REJECT} to veto the write — the cell keeps its old value, nothing enters undo
-   *     history, no `cellValueChanged` fires (an editor commit emits
-   *     `editingChanged {state: "rejected"}` instead);
+   *   - {@link REJECT} (or `reject("message")`, see {@link reject}) to veto the write — the cell
+   *     keeps its old value, nothing enters undo history, no `cellValueChanged` fires. An editor
+   *     commit emits `editingChanged {state: "rejected"}` instead and keeps the editor open with the
+   *     typed text and the cell marked invalid (Escape cancels, Enter or blur retries); batch writes
+   *     skip the cell;
    *   - a value to store it in place of the proposed one (coerce/clamp);
    *   - `undefined` to accept the proposed value unchanged (store an empty value by returning
    *     `null` instead).
@@ -1604,6 +1646,14 @@ export interface GridOptions<TData = any> {
    */
   fillHandle?: boolean | FillHandleOptions;
   /**
+   * Show a floating filter row under the header: one input per filterable column, bound to that
+   * column's filter model, so a filter can be typed without opening the column menu. A column opts
+   * out with `ColDef.floatingFilter: false`. Defaults to false. Can be changed on a mounted grid.
+   */
+  floatingFilter?: boolean;
+  /** Clipboard behaviour: delimiter, header copying and per-cell transforms. See {@link ClipboardOptions}. */
+  clipboard?: ClipboardOptions<TData>;
+  /**
    * When true, clicking a column header selects that column (Ctrl/Cmd+click toggles). When false,
    * header clicks no longer select the column; sorting (Shift+click / sort affordances), the column
    * menu, and filtering are unaffected. Defaults to true.
@@ -1863,7 +1913,10 @@ export interface GridOptions<TData = any> {
   /**
    * When true (default), an open cell editor commits its value when it loses focus (e.g. clicking
    * elsewhere). When false, losing focus is ignored and the editor stays open until an explicit
-   * commit (Enter/Tab) or cancel (Escape).
+   * commit (Enter/Tab) or cancel (Escape). A blur commit the column's parser or
+   * `onBeforeCellCommit` refuses leaves the editor open and invalid, and takes focus back into it
+   * when focus went elsewhere in the grid (focus that left the grid is left where it went); Escape
+   * cancels.
    */
   commitOnBlur?: boolean;
   /**
@@ -2183,6 +2236,8 @@ export interface InternalGridOptions extends GridOptions {
   cellSelection: CellSelectionMode;
   rangeSelection: boolean;
   fillHandle: boolean | FillHandleOptions;
+  floatingFilter: boolean;
+  clipboard: ClipboardOptions | undefined;
   columnSelection: boolean;
   headerKeyboardNavigation: boolean;
   showColumnButtonsOnHover: boolean;
@@ -2267,6 +2322,7 @@ export const RUNTIME_OPTION_KEYS = [
   "cellSelection",
   "rangeSelection",
   "fillHandle",
+  "floatingFilter",
   "columnSelection",
   "headerKeyboardNavigation",
   "showColumnButtonsOnHover",
@@ -2402,6 +2458,7 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   ariaLabel: true, ariaLabelledBy: true,
   highlightActiveCell: true, rowSelection: true, isRowSelectable: true, cellSelection: true,
   rangeSelection: true, fillHandle: true, columnSelection: true, headerKeyboardNavigation: true,
+  floatingFilter: true, clipboard: true,
   showColumnButtonsOnHover: true, bodyContextMenu: true, multiColumnMenu: true,
   selectAllRowsOnHeaderClick: true, selectAllScope: true, selectionPersistence: true,
   resetPageOn: true, pageSize: true, pageSizes: true, serverSideBlockSize: true,

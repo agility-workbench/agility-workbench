@@ -194,8 +194,11 @@ export type GridEventHeaderFocusChangedParams = {
 
 export type GridEventEditingChangedParams = {
   // "rejected" = an editor commit was refused — by `onBeforeCellCommit`, or by the column's parser
-  // (its valueParser, or the built-in one for its type: "abc" into a number column): the editor
-  // closes and the cell keeps its old value (no write, no undo entry, no cellValueChanged).
+  // (its valueParser, or the built-in one for its type: "abc" into a number column): the cell keeps
+  // its old value (no write, no undo entry, no cellValueChanged). A commit from the open editor
+  // (Enter, Tab, blur, `api.stopEditing()`) keeps that editor open, marked invalid, so
+  // `getEditingCell()` still returns the cell; `api.setCellValue` and `api.stopEditing(value)`
+  // close it as before.
   state: "started" | "stopped" | "cancelled" | "committed" | "rejected";
   /** Normalized on emit: public colId + colInstanceId. */
   cell?: CellRef;
@@ -203,6 +206,8 @@ export type GridEventEditingChangedParams = {
   value?: unknown;
   // the cell's value before the commit (committed / rejected)
   oldValue?: unknown;
+  /** For rejected: the message a `reject("message")` carried, if any. */
+  message?: string;
   // For state "started" via edit-on-typing: the printable character that opened the editor, so
   // the renderer can seed the editor with it.
   charPress?: string;
@@ -404,7 +409,8 @@ export type GridEventPivotColumnLimitReachedParams = {
 
 export type GridEventErrorParams = {
   /** Machine-readable kind of failure. A failed row-model request — the data source rejected it,
-   * or the grid refused what it returned — is `"row_model_error"`. */
+   * or the grid refused what it returned — is `"row_model_error"`; a paste whose system clipboard
+   * read failed (permission denied, unsupported) is `"clipboard_read_failed"`. */
   code: string;
   message: string;
   /** What failed, when known: the value a data source passed to `error()`, or a

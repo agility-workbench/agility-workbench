@@ -335,11 +335,14 @@ if (!api.ensureCellVisible({ rowId: error.rowId, colId: error.field }, { positio
 | Method | Purpose |
 | --- | --- |
 | `startEditingCell(cell)` | Begin editing `{ rowId, colId }` |
-| `stopEditing(value)` / `cancelEditing()` | Finish or cancel the active edit |
+| `stopEditing()` / `stopEditing(value)` / `cancelEditing()` | Finish or cancel the active edit. With no argument, commits what the open editor holds exactly as Enter does (a refused value keeps the editor open and invalid); with a `value`, commits that raw value instead |
 | `getEditingCell()` | The cell being edited as `{ rowId, colId }`, or `null` |
 | `setCellValue(cell, value)` | Write one cell without opening an editor |
 | `setCellValues(edits)` | Write many cells as **one** undo step (changed cells only) |
-| `copySelection()` / `cutSelection()` / `paste()` | Clipboard workflows |
+| `copySelection(options?)` | Copy the selection with `clipboard.delimiter` and `processCellForClipboard`; `{ includeHeaders }` overrides `clipboard.copyHeaders` for this call |
+| `cutSelection()` | Copy as above, then clear the editable cells — one undo step |
+| `paste()` | Paste from `navigator.clipboard.readText()` (may prompt); a refused or missing read emits `error` with `code: "clipboard_read_failed"` |
+| `pasteText(text)` | Paste a string into the selection as Ctrl/Cmd+V would (delimiter, tiling, `processCellFromClipboard`, parser, one undo step); returns whether a cell was written |
 | `fillDown()` / `fillRight()` | Fill the selection down / right as `Ctrl/Cmd+D` / `Ctrl/Cmd+R` do (always a copy); returns the number of cells written |
 | `canFillDown()` / `canFillRight()` | Whether a fill has cells to write — for a toolbar button's enabled state; re-read on `selectionChanged` and `cellsChanged` |
 | `undo()` / `redo()` | Traverse edit history |

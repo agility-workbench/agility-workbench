@@ -45,6 +45,22 @@ export interface ICellEditor<TData = any> {
   focus?(): void;
   /** Return true to abort opening the editor (e.g. nothing editable). */
   isCancelBeforeStart?(): boolean;
+  /**
+   * Asked when the editor is about to commit (Enter, Tab, blur, `api.stopEditing()`): return true
+   * to treat the commit as a cancel — the cell keeps its value and the editor closes, as Escape
+   * would (e.g. a required field left empty, or a picker closed without a choice). Defaults to
+   * false.
+   */
+  isCancelAfterEnd?(): boolean;
+  /**
+   * Asked on each commit attempt, after `isCancelAfterEnd`: return a non-empty message to refuse
+   * the commit before it reaches the column's parser — the editor stays open with the cell marked
+   * invalid (`pte-cell-invalid`, `aria-invalid="true"`) and the message shown and announced; the
+   * next Enter/Tab/blur asks again, Escape cancels. Return null/undefined/"" to let the commit
+   * proceed. Validation that belongs to the column rather than the editor is better placed in its
+   * `valueParser` (return `reject("message")`) or in `onBeforeCellCommit`.
+   */
+  getValidationMessage?(): string | null | undefined;
   destroy?(): void;
 }
 

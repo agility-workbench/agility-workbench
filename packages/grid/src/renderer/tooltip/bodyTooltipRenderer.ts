@@ -2,6 +2,7 @@ import { findHeaderCell } from "../header/headerCellLookup";
 import { isCompatMouseEvent } from "../interaction/touchGestures";
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
+import { isTreeAggregateCell } from "../../core/groupCellValue";
 import { IGridAPI } from "../../interfaces/iGridAPI";
 import {
   ResolvedTooltipOptions,
@@ -525,8 +526,10 @@ export class BodyTooltipRenderer {
         : null;
     }
 
-    const value = col.getValue(rowNode);
-    const valueFormatted = col.formatValue(value, rowNode);
+    // A tree parent's aggregated cell carries the aggregate it paints, not the row's own value.
+    const treeAggregate = isTreeAggregateCell(col, rowNode) ? core.getGroupCellValue(col, rowNode) : undefined;
+    const value = treeAggregate ? treeAggregate.value : col.getValue(rowNode);
+    const valueFormatted = treeAggregate ? treeAggregate.formatted : col.formatValue(value, rowNode);
     const rowPresentation = target.rowPresentation ?? resolveRowPresentation(core, rowNode, target.viewIdx);
     const rowTooltip = this.rowTooltipFor({ ...target, rowPresentation }, col);
     // Preserve the old "group rows have no cell tooltip" behavior unless a row tooltip explicitly

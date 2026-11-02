@@ -2,7 +2,8 @@ import { Column } from "../../column/column";
 import { IGridCore } from "../../interfaces/iGridCore";
 import { CellRef, SelectionRange } from "../../interfaces/selection";
 import { IRowNode } from "../../interfaces/iRowNode";
-import { parseTSV, serializeNodesToTSV } from "./tsv";
+import type { ClipboardOptions } from "../../interfaces/clipboard";
+import { escapeTSV, parseTSV, serializeNodesToTSV, SerializeFormat } from "./tsv";
 
 interface ClipboardRendererParams {
   core: IGridCore;
@@ -26,7 +27,7 @@ export interface ClipboardSelection {
 }
 
 export interface ClipboardCopyOptions {
-  /** Prepend one line of column labels. */
+  /** Prepend one line of column labels. Unset follows `clipboard.copyHeaders` (default false). */
   withHeaders?: boolean;
   /** Copy this selection instead of the core's current one. */
   selection?: ClipboardSelection;
@@ -54,13 +55,20 @@ interface SelectionBlock {
  * range and a 1×2 block repeats down a 3×2 selection; otherwise the block spills once from the
  * anchor. Non-editable target cells are skipped but still consume their grid slot so alignment is
  * preserved. Cells that would fall outside the grid are clipped (no rows/columns are created).
+ *
+ * `GridOptions.clipboard` shapes both directions. Copy: each cell's text is what the grid shows
+ * (the column's formatter; a group row's label/aggregate), then `processCellForClipboard`, then
+ * quoting; each header is the column label, then `processHeaderForClipboard`, then quoting; fields
+ * join with `delimiter`, rows with "\n". Paste: the text splits on `\r?\n` (a trailing newline is
+ * ignored) and `delimiter`, honouring quoted fields; each target cell's field goes through
+ * `processCellFromClipboard`, then (in the core's cellsCommit) the column's `valueParser`,
+ * `onBeforeCellCommit` and `valueSetter`. A hook that returns a non-string is taken as the final
+ * typed value and skips the parser.
  */
 export class ClipboardRenderer {
   // The readText fallback armed by the Ctrl/Cmd+V binding; a `paste` event that arrives first
   // cancels it (see pasteFromShortcut).
   private shortcutFallback: ReturnType<typeof setTimeout> | undefined;
-  // Whether the "clipboard could not be read" warning has been shown (once per renderer).
-  private readWarned = false;
   private readonly onPasteEvent = (e: Event) => this.handlePasteEvent(e as ClipboardEvent);
 
   constructor(private params: ClipboardRendererParams) {
@@ -90,13 +98,13 @@ export class ClipboardRenderer {
     const block = this.resolveSelectionBlock(options.selection)
       ?? this.resolveSelectionBlock(options.selection, true)
       ?? this.fallbackBlock(options.fallbackCell);
-    return block ? this.serialize(block, options.withHeaders === true) : "";
+    return block ? this.serialize(block, options.withHeaders ?? this.clipboardOptions().copyHeaders === true) : "";
   }
 
   cut(): void {
     const block = this.resolveSelectionBlock();
     if (!block) return;
-    void this.write(this.serialize(block, false));
+    void this.write(this.serialize(block, this.clipboardOptions().copyHeaders === true));
 
     // Clear the copied cells (cut = copy + clear).
     const edits = this.buildClearEdits(block);
@@ -159,12 +167,13 @@ export class ClipboardRenderer {
 
   /**
    * Paste from the async clipboard (`navigator.clipboard.readText`) — `api.paste()` and the body
-   * menu's Paste. When the read is unavailable or refused (Firefox without the async clipboard,
-   * insecure contexts, a denied permission) nothing is written and a one-time warning points at
-   * keyboard paste, which reaches the grid as a `paste` event and needs no permission.
+   * menu's Paste (`origin: "menu"`). When the read is unavailable or refused (Firefox without the
+   * async clipboard, insecure contexts, a denied permission) nothing is written and the grid emits
+   * an `error` event (`code: "clipboard_read_failed"`) pointing at keyboard paste, which reaches
+   * the grid as a `paste` event and needs no permission. Never throws.
    */
-  async paste(): Promise<void> {
-    await this.pasteViaReadText("api");
+  async paste(origin: "api" | "menu" = "api"): Promise<void> {
+    await this.pasteViaReadText(origin);
   }
 
   /**
@@ -198,8 +207,11 @@ export class ClipboardRenderer {
     if (core.getOptions().cellSelection === false || core.getOptions().cellSelection === "text") return false;
     // The keyboard path's paste event arrived: the readText fallback is not needed.
     this.cancelShortcutFallback();
-    const text = e.clipboardData?.getData("text/plain") ?? "";
-    const consumed = this.applyPasteText(text);
+    const data = e.clipboardData;
+    let text = data?.getData("text/plain") ?? "";
+    // A source that put only HTML on the clipboard: take the first table's cells.
+    if (!text && data) text = htmlTableToText(data.getData("text/html") ?? "", this.clipboardOptions().delimiter);
+    const consumed = this.pasteText(text);
     if (consumed) e.preventDefault();
     return consumed;
   }
@@ -210,40 +222,44 @@ export class ClipboardRenderer {
     this.shortcutFallback = undefined;
   }
 
-  private async pasteViaReadText(origin: "api" | "shortcut"): Promise<void> {
+  private async pasteViaReadText(origin: "api" | "menu" | "shortcut"): Promise<void> {
     if (!this.pasteAnchor()) return;
     let text: string;
     try {
       text = await this.read();
     } catch (err) {
-      this.warnReadFailed(origin, err);
+      this.reportReadFailed(origin, err);
       return;
     }
-    this.applyPasteText(text);
+    this.pasteText(text);
   }
 
-  private warnReadFailed(origin: "api" | "shortcut", err: unknown): void {
-    if (this.readWarned) return;
-    this.readWarned = true;
+  // A refused or unsupported clipboard read surfaces as the grid's `error` event, once per
+  // attempt, so the application can tell the user (the grid has no UI of its own for it).
+  private reportReadFailed(origin: "api" | "menu" | "shortcut", err: unknown): void {
     const reason = err instanceof Error ? err.message : String(err);
-    console.warn(origin === "api"
-      ? `Paste could not read the clipboard (${reason}): navigator.clipboard.readText is unavailable `
+    const message = origin === "shortcut"
+      ? `Paste could not read the clipboard (${reason}): the browser fired no paste event for `
+        + `Ctrl+V / Cmd+V and navigator.clipboard.readText is unavailable or was refused.`
+      : `Paste could not read the clipboard (${reason}): navigator.clipboard.readText is unavailable `
         + `or was refused in this browser or context. Keyboard paste (Ctrl+V / Cmd+V) on the focused `
-        + `grid works without clipboard permission.`
-      : `Paste could not read the clipboard (${reason}): the browser fired no paste event for `
-        + `Ctrl+V / Cmd+V and navigator.clipboard.readText is unavailable or was refused.`);
+        + `grid works without clipboard permission.`;
+    this.params.core.emit("error", { code: "clipboard_read_failed", message, details: err });
   }
 
   /**
-   * The paste pipeline every path shares: parse the TSV, position it from the selection's anchor,
-   * commit the editable targets in one cellsCommit, then select the pasted rectangle. Returns
-   * whether any cell was written.
+   * The paste pipeline every path shares (the `paste` event, `api.paste()`, the body menu and
+   * `api.pasteText`): parse the text, position it from the selection's anchor, run
+   * `processCellFromClipboard` per target cell, commit the editable targets in one cellsCommit
+   * (one undo step), then select the pasted rectangle. Returns whether any cell was written.
    */
-  private applyPasteText(text: string): boolean {
+  pasteText(text: string): boolean {
     const anchor = this.pasteAnchor();
     if (!anchor) return false;
 
-    const grid = parseTSV(text);
+    const clipboardOptions = this.clipboardOptions();
+    const processCell = clipboardOptions.processCellFromClipboard;
+    const grid = parseTSV(text, clipboardOptions.delimiter);
     if (grid.length === 0) return false;
 
     const core = this.params.core;
@@ -263,7 +279,7 @@ export class ClipboardRenderer {
     const targetRows = tile ? anchor.rowSpan : blockRows;
     const targetCols = tile ? anchor.colSpan : blockCols;
 
-    const edits: { cell: CellRef; value: unknown }[] = [];
+    const edits: { cell: CellRef; value: unknown; parsed?: boolean }[] = [];
     let clipped = 0;
 
     for (let r = 0; r < targetRows; r++) {
@@ -283,8 +299,14 @@ export class ClipboardRenderer {
         if (!col || col.isInternal() || col.hidden) { clipped++; continue; }
         // Skip non-editable targets but keep their positional slot (already advanced by c).
         if (!col.isCellEditable(row, rowPresentation)) continue;
-        const value = srcRow[c % blockCols] ?? "";
-        edits.push({ cell: { rowId, colId: col.instanceID }, value });
+        const raw = srcRow[c % blockCols] ?? "";
+        if (!processCell) {
+          edits.push({ cell: { rowId, colId: col.instanceID }, value: raw });
+          continue;
+        }
+        const value = processCell({ value: raw, node: row, colDef: col.col, colId: col.colId });
+        // A non-string result is the final typed value: the column's valueParser is skipped.
+        edits.push({ cell: { rowId, colId: col.instanceID }, value, parsed: typeof value !== "string" || undefined });
       }
     }
 
@@ -307,7 +329,25 @@ export class ClipboardRenderer {
 
   // ---------------- Selection → block resolution ----------------
   private serialize(block: SelectionBlock, withHeaders: boolean): string {
-    return serializeNodesToTSV(block.cols, block.nodes, withHeaders, (col, node) => this.params.core.getGroupCellValue(col, node));
+    const core = this.params.core;
+    return serializeNodesToTSV(block.cols, block.nodes, withHeaders, (col, node) => core.getGroupCellValue(col, node), this.serializeFormat());
+  }
+
+  private clipboardOptions(): ClipboardOptions {
+    return this.params.core.getOptions().clipboard ?? {};
+  }
+
+  private serializeFormat(): SerializeFormat {
+    const { delimiter, processCellForClipboard, processHeaderForClipboard } = this.clipboardOptions();
+    return {
+      delimiter,
+      processCell: processCellForClipboard
+        ? (col, node, value) => processCellForClipboard({ value, node, colDef: col.col, colId: col.colId })
+        : undefined,
+      processHeader: processHeaderForClipboard
+        ? (col, value) => processHeaderForClipboard({ value, colDef: col.col, colId: col.colId })
+        : undefined,
+    };
   }
 
   // One cell, when its column is copyable (visible, not a utility column). Copy-only: it carries
@@ -436,9 +476,10 @@ export class ClipboardRenderer {
     if (!text) return;
     if (this.params.writeText) return this.params.writeText(text);
 
-    if (navigator?.clipboard?.writeText) {
+    const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+    if (clipboard?.writeText) {
       try {
-        await navigator.clipboard.writeText(text);
+        await clipboard.writeText(text);
         return;
       } catch (err) {
         console.error("Failed to write to clipboard", err);
@@ -455,10 +496,16 @@ export class ClipboardRenderer {
     document.body.removeChild(ta);
   }
 
+  // Never throws synchronously: an insecure context has no `navigator.clipboard` at all.
   private read(): Promise<string> {
-    if (this.params.readText) return this.params.readText();
-    if (navigator?.clipboard?.readText) return navigator.clipboard.readText();
-    return Promise.reject(new Error("Clipboard read not supported"));
+    try {
+      if (this.params.readText) return this.params.readText();
+      const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+      if (clipboard?.readText) return clipboard.readText();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    return Promise.reject(new Error("navigator.clipboard.readText is not available (insecure context or unsupported browser)"));
   }
 }
 
@@ -467,6 +514,18 @@ function isFormControl(target: Node | null): boolean {
   const el = target as HTMLElement | null;
   if (!el || el.nodeType !== 1) return false;
   return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable === true;
+}
+
+// The first `<table>` of an HTML clipboard payload as delimited text ("" when there is none or the
+// platform has no DOMParser). Cell text is its textContent, quoted through escapeTSV.
+function htmlTableToText(html: string, delimiter = "\t"): string {
+  if (!html || !/<table[\s>]/i.test(html) || typeof DOMParser === "undefined") return "";
+  const table = new DOMParser().parseFromString(html, "text/html").querySelector("table");
+  if (!table) return "";
+  const sep = delimiter || "\t";
+  return Array.from(table.querySelectorAll("tr"))
+    .map(tr => Array.from(tr.querySelectorAll("td, th")).map(c => escapeTSV((c.textContent ?? "").trim(), sep)).join(sep))
+    .join("\n");
 }
 
 function rangeToViewIdxs(start: number, end: number): number[] {

@@ -16,6 +16,11 @@
  *                                  where its header cell starts and are as wide
  *   row-y / band-row-y             a row's fragments in the four sections share top and height
  *   hcell-clipped / hcell-gap      header cells fit the wrapper exactly; leaves reach its bottom
+ *                                  (the levels' bottom, the floating filter row's top border, while
+ *                                  that row is shown)
+ *   floating-*                     the floating filter row fills the wrapper under the levels, its
+ *                                  sections mirror the header's (section-box, scroll-sync, gutter,
+ *                                  row-*) and each of its cells sits under its leaf header cell
  *   group-width                    a group header is as wide as its visible leaves together
  *   scroll-sync                    the parallel scrollers of a side agree on scrollLeft
  *   gutter-*                       the vertical-scrollbar lane is reserved exactly where the body
@@ -40,6 +45,7 @@
     viewport: { leading: ".pte-viewport-leading", left: ".pte-viewport-left", center: ".pte-viewport", right: ".pte-viewport-right" },
     aggregate: { wrapper: ".pte-aggregate-row", leading: ".pte-aggregate-leading", left: ".pte-aggregate-left", center: ".pte-aggregate-center", right: ".pte-aggregate-right" },
     lane: { wrapper: ".pte-scroller-horizontal-container-wrapper", leading: ".pte-scroller-horizontal-leading-container", left: ".pte-scroller-horizontal-left-container", center: ".pte-scroller-horizontal-container", right: ".pte-scroller-horizontal-right-container" },
+    floating: { wrapper: ".pte-floating-filter-row", leading: ".pte-floating-filter-leading", left: ".pte-floating-filter-left", center: ".pte-floating-filter", right: ".pte-floating-filter-right" },
     band: { leading: ".pte-pinned-rows-leading", left: ".pte-pinned-rows-left", center: ".pte-pinned-rows-center", right: ".pte-pinned-rows-right", vertical: ".pte-pinned-rows-vertical" },
   };
 
@@ -168,6 +174,7 @@
     var viewport = find(root, SEL.viewport);
     var aggregate = find(root, SEL.aggregate);
     var lane = find(root, SEL.lane);
+    var floating = find(root, SEL.floating);
     var bands = {
       top: root.querySelector(".pte-pinned-rows-top"),
       bottom: root.querySelector(".pte-pinned-rows-bottom"),
@@ -184,6 +191,7 @@
     var gutter = bodyEl.offsetWidth - bodyEl.clientWidth;
     var aggVisible = displayed(aggregate.wrapper);
     var laneVisible = displayed(lane.wrapper);
+    var ffVisible = displayed(floating.wrapper);
     var presentIn = {};
     SECTIONS.forEach(function (s) { presentIn[s] = present(body[s]); });
 
@@ -193,6 +201,7 @@
         { kind: "header", el: header[s] },
         { kind: "aggregate", el: aggVisible ? aggregate[s] : null },
         { kind: "lane", el: laneVisible ? lane[s] : null },
+        { kind: "floating", el: ffVisible ? floating[s] : null },
       ];
       ["top", "bottom", "sticky"].forEach(function (name) {
         var band = bands[name];
@@ -321,6 +330,18 @@
           }
         }
       }
+      if (ffVisible && floating[s] && present(floating[s])) {
+        // The floating filter row carries one cell per visible leaf, keyed like the body cells.
+        var ffCells = list(floating[s].querySelectorAll(".pte-floating-filter-cell"));
+        compareCells(s, "floating", headerCells, ffCells, -1);
+        for (var fi = 0; fi < Math.min(ffCells.length, headerCells.length); fi++) {
+          if (headerCells[fi].id && ffCells[fi].dataset.colId !== headerCells[fi].id) {
+            err("floating-cell-order", s + " floating cell " + fi + " belongs to another column than its header cell",
+              { header: headerCells[fi].id, cell: ffCells[fi].dataset.colId });
+            break;
+          }
+        }
+      }
       if (aggVisible && aggregate[s] && present(aggregate[s])) {
         compareCells(s, "aggregate", headerCells, list(aggregate[s].querySelectorAll(".pte-aggregate-cell")), -1);
       }
@@ -407,12 +428,48 @@
     // that declared height, so their last pixel row sits under the border by design. Cells may run
     // to the border-box edge; anything past it is clipped.
     var wrapperBottom = wb.bottom - wb.padBottom;
+    // With the floating filter row shown, the levels end where its top border starts covering the
+    // leaf cells' last pixel row (the role the wrapper's bottom border plays without it); the row
+    // itself runs to the wrapper's border-box bottom and its cells fill it.
+    var levelsBottom = wrapperBottom;
+    if (ffVisible) {
+      var fb = box(floating.wrapper);
+      levelsBottom = fb.top + fb.bTop;
+      if (!near(fb.bottom, wrapperBottom, BOX_TOL)) {
+        err("floating-row-y", "floating filter row does not reach the header wrapper's bottom",
+          { row: [r2(fb.top), r2(fb.bottom)], wrapperBottom: r2(wrapperBottom) });
+      }
+      if (fb.height - fb.bTop < 8) {
+        err("floating-row-y", "floating filter row has no room for its controls", { height: r2(fb.height) });
+      }
+      var ffRowCells = list(floating.wrapper.querySelectorAll(".pte-floating-filter-cell"));
+      for (var fc = 0; fc < ffRowCells.length; fc++) {
+        var fcb = box(ffRowCells[fc]);
+        if (!near(fcb.top, levelsBottom, BOX_TOL) || !near(fcb.bottom, fb.bottom, BOX_TOL)) {
+          err("floating-cell-y", "floating filter cell does not fill the row's height", {
+            cell: [r2(fcb.top), r2(fcb.bottom)], row: [r2(levelsBottom), r2(fb.bottom)],
+          });
+          break;
+        }
+        var controls = list(ffRowCells[fc].querySelectorAll("input, select, button"));
+        for (var ci = 0; ci < controls.length; ci++) {
+          var ctl = box(controls[ci]);
+          if (ctl.top < fcb.top - CELL_TOL || ctl.bottom > fcb.bottom + CELL_TOL) {
+            err("floating-control-clipped", "a floating filter control is taller than its cell", {
+              control: [r2(ctl.top), r2(ctl.bottom)], cell: [r2(fcb.top), r2(fcb.bottom)],
+            });
+            fc = ffRowCells.length;
+            break;
+          }
+        }
+      }
+    }
     var hcells = list(header.wrapper.querySelectorAll(".pte-hcell"));
     for (var h = 0; h < hcells.length; h++) {
       var hb = box(hcells[h]);
-      if (hb.bottom > wrapperBottom + CELL_TOL || hb.top < wrapperTop - CELL_TOL) {
-        err("hcell-clipped", "header cell (" + cellLabel(hcells[h]) + ") extends past the header wrapper", {
-          cell: [r2(hb.top), r2(hb.bottom)], wrapper: [r2(wrapperTop), r2(wrapperBottom)],
+      if (hb.bottom > levelsBottom + CELL_TOL || hb.top < wrapperTop - CELL_TOL) {
+        err("hcell-clipped", "header cell (" + cellLabel(hcells[h]) + ") extends past the header levels", {
+          cell: [r2(hb.top), r2(hb.bottom)], wrapper: [r2(wrapperTop), r2(levelsBottom)],
         });
         break;
       }
@@ -420,9 +477,9 @@
     var leaves = list(header.wrapper.querySelectorAll(".pte-hcell-leaf"));
     for (var l = 0; l < leaves.length; l++) {
       var lb = box(leaves[l]);
-      if (!near(lb.bottom, wrapperBottom, BOX_TOL)) {
-        err("hcell-gap", "leaf header cell (" + cellLabel(leaves[l]) + ") does not reach the wrapper's bottom", {
-          cellBottom: r2(lb.bottom), wrapperBottom: r2(wrapperBottom),
+      if (!near(lb.bottom, levelsBottom, BOX_TOL)) {
+        err("hcell-gap", "leaf header cell (" + cellLabel(leaves[l]) + ") does not reach the levels' bottom", {
+          cellBottom: r2(lb.bottom), levelsBottom: r2(levelsBottom), floatingRow: ffVisible,
         });
         break;
       }
@@ -451,6 +508,7 @@
       if (!presentIn[s]) return;
       var scrollers = [{ kind: "header", el: header[s] }, { kind: "body", el: body[s] }];
       if (aggVisible) scrollers.push({ kind: "aggregate", el: aggregate[s] });
+      if (ffVisible) scrollers.push({ kind: "floating", el: floating[s] });
       if (laneVisible && lane[s]) scrollers.push({ kind: "lane", el: lane[s].querySelector(".pte-scroller-horizontal-spacer") });
       ["top", "bottom", "sticky"].forEach(function (name) {
         var band = bands[name];
@@ -480,6 +538,13 @@
     if (presentIn.right && header.center && box(header.center).padEnd > CELL_TOL) {
       err("gutter-header", "centre header carries scrollbar padding although the right section owns the lane",
         { padding: r2(box(header.center).padEnd) });
+    }
+    if (ffVisible) {
+      var ffPadBox = presentIn.right && floating.right ? box(floating.right) : box(floating.center);
+      if (!near(ffPadBox.padEnd, gutter, CELL_TOL)) {
+        err("gutter-floating", "floating filter row reserves " + r2(ffPadBox.padEnd) + "px for a " + gutter + "px body scrollbar",
+          { on: label(ffPadBox.el) });
+      }
     }
     if (laneVisible && !near(box(lane.wrapper).padEnd, gutter, CELL_TOL)) {
       err("gutter-lane", "scrollbar strip reserves " + r2(box(lane.wrapper).padEnd) + "px for a " + gutter + "px body scrollbar");
@@ -524,6 +589,7 @@
     checkRow("header", header.wrapper, sectionItems(header));
     checkRow("body", body.wrapper, sectionItems(body));
     if (aggVisible) checkRow("aggregate", aggregate.wrapper, sectionItems(aggregate));
+    if (ffVisible) checkRow("floating filter", floating.wrapper, sectionItems(floating));
     if (laneVisible) checkRow("scrollbar strip", lane.wrapper, sectionItems(lane));
     ["top", "bottom", "sticky"].forEach(function (name) {
       var band = bands[name];
@@ -645,6 +711,7 @@
     var summary = {
       root: { width: r2(rootBox.width), height: r2(rootBox.height) },
       header: r2(wb.height),
+      floatingFilter: ffVisible,
       gutter: gutter,
       sections: {
         leading: presentIn.leading ? r2(box(body.leading).width) : 0,

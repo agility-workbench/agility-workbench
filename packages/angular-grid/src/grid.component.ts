@@ -176,6 +176,10 @@ export class AwbGrid<TData = any> implements OnDestroy {
   readonly cellSelection = input<GridOptions["cellSelection"]>();
   readonly rangeSelection = input<GridOptions["rangeSelection"]>();
   readonly fillHandle = input<GridOptions["fillHandle"]>();
+  /** Floating filter row under the header; see `GridOptions.floatingFilter`. */
+  readonly floatingFilter = input<GridOptions["floatingFilter"]>();
+  /** Clipboard delimiter, header copying and per-cell transforms; see `GridOptions.clipboard`. */
+  readonly clipboard = input<GridOptions<TData>["clipboard"]>();
   readonly columnSelection = input<GridOptions["columnSelection"]>();
   readonly headerKeyboardNavigation = input<GridOptions["headerKeyboardNavigation"]>();
   readonly selectAllRowsOnHeaderClick = input<GridOptions["selectAllRowsOnHeaderClick"]>();
@@ -616,6 +620,7 @@ export class AwbGrid<TData = any> implements OnDestroy {
         cellSelection: this.cellSelection() ?? true,
         rangeSelection: this.rangeSelection() ?? true,
         fillHandle: this.fillHandle() ?? true,
+        floatingFilter: this.floatingFilter() ?? false,
         columnSelection: this.columnSelection() ?? true,
         headerKeyboardNavigation: this.headerKeyboardNavigation() ?? true,
         showColumnButtonsOnHover: this.showColumnButtonsOnHover() ?? false,

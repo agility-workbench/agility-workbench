@@ -95,8 +95,10 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       { id: "matchMode", label: "Match", kind: "select", options: [{ value: "multiTerm", label: "Any term" }, { value: "substring", label: "Substring" }, { value: "wholeCell", label: "Whole cell" }], default: "multiTerm" },
       { id: "caseSensitive", label: "Case sensitive", kind: "toggle", default: false },
       { id: "showBehaviorToggle", label: "Filter/Find toggle in options", kind: "toggle", default: true },
+      { id: "floatingFilter", label: "Floating filters", kind: "toggle", default: false },
     ],
     toProps: (v) => ({
+      ...onOff(v.floatingFilter, "floatingFilter"),
       quickFilter: {
         mode: str(v.mode),
         behavior: str(v.behavior),
@@ -140,6 +142,7 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       { id: "selectAllScope", label: "Select all", kind: "select", options: [{ value: "filtered", label: "All filtered rows" }, { value: "page", label: "Current page" }], default: "filtered", structural: true },
       { id: "selectionPersistence", label: "On sort/filter", kind: "select", options: [{ value: "clear", label: "Clear selection" }, { value: "keep", label: "Keep selection" }], default: "clear", structural: true },
       { id: "highlightActiveCell", label: "Highlight active cell", kind: "toggle", default: true },
+      { id: "copyHeaders", label: "Copy with headers", kind: "toggle", default: false, structural: true, hint: "Ctrl/Cmd+C also copies the header row (clipboard.copyHeaders)" },
     ],
     toProps: (v) => ({
       rowNumbers: true,
@@ -160,6 +163,8 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
       ...(v.selectAllScope === "page" ? { selectAllScope: "page" } : {}),
       ...(v.selectionPersistence === "keep" ? { selectionPersistence: "keep" } : {}),
       ...onOff(v.highlightActiveCell, "highlightActiveCell"),
+      // Creation-only, hence structural: the clipboard options are read when the grid is built.
+      ...(bool(v.copyHeaders) ? { clipboard: { copyHeaders: true } } : {}),
     }),
   },
   editing: {
@@ -221,6 +226,8 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
     knobs: [
       { id: "groupDefaultExpanded", label: "Expanded by default", kind: "select", options: [{ value: "0", label: "Collapsed" }, { value: "1", label: "First level" }, { value: "2", label: "Two levels" }, { value: "-1", label: "All levels" }], default: "2", structural: true },
       { id: "groupRowsSticky", label: "Sticky parent rows", kind: "toggle", default: false },
+      // Applied inside `treeData` by FeatureGrid (creation-only, hence structural).
+      { id: "filterIncludesDescendants", label: "Filter keeps descendants", kind: "toggle", default: false, structural: true, hint: "treeData.filterIncludesDescendants: fixed at construction, so changing it creates a new grid" },
     ],
     toProps: (v) => ({
       groupDefaultExpanded: num(v.groupDefaultExpanded),

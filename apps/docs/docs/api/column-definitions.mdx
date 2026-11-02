@@ -12,12 +12,14 @@ types widen component slots to accept their native component classes.
 
 | Field | Purpose |
 | --- | --- |
-| `colId` / `key` / `label` | Identity, data field, and display name |
+| `colId` / `key` / `label` | Identity, data field, and display name. A dotted `key` (`"address.city"`) reads and writes the nested value unless the row has a literal property of that name, which wins. See [nested keys](../examples/editing.mdx#nested-keys) |
 | `type` | String, number, date, boolean, or currency behavior |
 | `valueGetter` | Compute the raw value on a leaf row: receives the row node, so the row is `node.data` |
 | `groupValueGetter` | The value on a group row when the column has no aggregate: receives `{ node, data, aggregates }` (`data` server-side only); never runs on a leaf |
 | `valueFormatter` / `formatterOptions` | Format display and export |
-| `valueParser` | Convert committed text; built-in by `type` when omitted; return `REJECT` to refuse |
+| `valueParser` | Convert committed text; built-in by `type` when omitted; return `REJECT` or `reject("message")` to refuse (an editor commit then stays open, marked invalid, with the message) |
+| `valueSetter` | Write an accepted value back to the row instead of `data[key] = value`: receives `{ node, data, colDef, colId, key, oldValue, newValue }` and returns `true` when it changed the row, `false` to write nothing (no repaint, no event, no undo step). Runs on every write path, after `valueParser` and `onBeforeCellCommit`. Needed to edit a `valueGetter` column. See [valueSetter](../examples/editing.mdx#writing-derived-values-valuesetter) |
+| `editable` | `true` to edit the column's cells, or a function of `{ node, data, colDef, colId, value }` returning `true` per row; asked when opening an editor and by paste, cut, clear, fill and the body menu. Group rows are never editable. See [per-row editability](../examples/editing.mdx#per-row-editability-editable-as-a-function) |
 | `aggFunc` | The column's aggregate function — a built-in type (`"sum"`, `"first"`, …) or a name from `GridOptions.aggFuncs`. It is the column's default in the footer and the aggregate menu (instead of sum for numbers, count otherwise), and the column joins the initial aggregate model as if `setAggregates` had listed it. An unknown name warns once and is ignored; so is `aggFunc` on an `aggregatable: false` column. See [aggregates](../examples/grouping.mdx#aggregates) |
 
 ### Formatter options
@@ -81,6 +83,9 @@ Columns may define `sort`, `sortIndex`, `sortingOrder`, `sortIconVisibility`,
 and a custom `comparator`. `filter` selects a built-in panel or custom matcher
 (`filter: false` removes filtering only; use `sortable: false` to stop sorting);
 `filterParams` configures operators, inputs, values, debounce, and buttons.
+`floatingFilter: false` leaves the column's cell in the floating filter row
+(`GridOptions.floatingFilter`) empty; a column with a filter shows one there by
+default. See [Floating filters](../examples/filtering.mdx#floating-filters).
 
 ## Components
 
@@ -146,7 +151,7 @@ const columnDefs: ColDef<Trade>[] = [
 
 The row type reaches `valueGetter` (an `IRowNode<Trade>`), `cellClass`, `cellStyle`,
 `colSpan`, `tooltipValueGetter`, `valueFormatter` / `valueParser` (their `row` node),
-`comparator`, and the params of cell renderers (`node`), editors (`row`), tooltips
+`comparator`, `valueSetter` and a function `editable` (their `data`), and the params of cell renderers (`node`), editors (`row`), tooltips
 (`data`) and ActionFrames (`data`). A cell renderer's `data` stays `any`: on a column
 cell it is the row node, so read the typed row off `node.data`. Cell values stay
 `any`.

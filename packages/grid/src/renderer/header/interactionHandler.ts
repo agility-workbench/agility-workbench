@@ -17,6 +17,8 @@ type HeaderInteractionHandlerParams = {
     anchor: { anchorEl?: HTMLElement; left?: number; top?: number },
   ) => void;
   openColumnFilter: (colID: string, anchorEl: HTMLElement) => void;
+  /** Focus a column's floating filter control; false when the row is off or the column has none. */
+  focusFloatingFilter?: (instanceID: string) => boolean;
 };
 
 export class HeaderInteractionHandler {
@@ -165,12 +167,18 @@ export class HeaderInteractionHandler {
         scope: "headerCursor",
         run: () => undefined,
       },
+      // With the floating filter row shown, a plain ArrowDown steps into the column's filter control
+      // first (Escape or ArrowUp there comes back); a column with none there goes on to the rows.
       {
         id: "enterBody",
         chord: { key: "arrowdown", ...move },
         scope: "headerCursor",
         label: core.getLocaleText("shortcutEnterRows"),
-        run: nav("down"),
+        run: (e) => {
+          const col = core.getHeaderFocusColumn();
+          if (col && !e.shiftKey && this.params.focusFloatingFilter?.(col.instanceID)) return;
+          nav("down")();
+        },
       },
       {
         id: "homeColumn",

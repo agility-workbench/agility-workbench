@@ -16,7 +16,8 @@ function normalizeOption(opt: SelectEditorOption): { value: any; label: string }
  * selected raw value. isParsed = true.
  *
  * While async/fromRows values load, the select shows a disabled "Loading…" option and is repopulated
- * (preserving the current value) once they arrive. The load is aborted on destroy.
+ * (preserving the current value) once they arrive. The load is aborted on destroy. Committing
+ * before they arrive is a cancel (isCancelAfterEnd).
  */
 export class SelectCellEditor implements ICellEditor {
   private select!: HTMLSelectElement;
@@ -104,6 +105,12 @@ export class SelectCellEditor implements ICellEditor {
 
   isParsed(): boolean {
     return true;
+  }
+
+  // Committing while the values are still loading would only write back the value the cell
+  // already holds; treat it as a cancel instead.
+  isCancelAfterEnd(): boolean {
+    return this.select.disabled;
   }
 
   focus(): void {

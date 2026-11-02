@@ -383,6 +383,9 @@ export type GridActionEditCommit = {
   // (typed editors like number/date/boolean/select produce their own value). Defaults to false,
   // where `value` is treated as raw text and run through valueParser.
   parsed?: boolean;
+  // True when the open editor itself is committing (Enter, Tab, blur, `api.stopEditing()`): a
+  // refused value then keeps the editor open and invalid instead of closing it.
+  fromEditor?: boolean;
 };
 
 export type GridActionEditCancel = {

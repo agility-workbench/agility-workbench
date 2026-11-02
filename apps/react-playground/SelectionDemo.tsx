@@ -6,8 +6,8 @@ import { ColumnType } from "@grid/interfaces/column";
 import type { IGridAPI } from "@grid/interfaces/iGridAPI";
 import type { SelectionSnapshot } from "@grid/interfaces/selection";
 import type { ICellEditorParams } from "@grid";
-import type { FillOperationParams, FillOperationResult } from "@grid";
-import { formatChord, ValueFormatterParams, ValueParserParams } from "@grid";
+import type { ClipboardOptions, FillOperationParams, FillOperationResult } from "@grid";
+import { formatChord, reject, ValueFormatterParams, ValueParserParams } from "@grid";
 import { formatDate } from "./helpers";
 
 /**
@@ -86,6 +86,8 @@ type EmployeeRow = {
   projects: number | "";
   active: string;
   joinedOn: Date;
+  // Nested, for the dotted-key column (key: "office.floor").
+  office: { floor: number | null };
 };
 
 const FIRST_NAMES = [
@@ -170,6 +172,7 @@ function buildRows(count: number): EmployeeRow[] {
     projects: maybe(Math.floor(rand() * 25)),
     active: maybe(rand() > 0.2 ? "Yes" : "No") as string,
     joinedOn: getRandomDate(new Date(2000, 0, 0), new Date(2026, 55, 0)),
+    office: { floor: ((i % 12) + 1) as number | null },
   }));
 
   // Guarantee a couple of obvious, fully-blank horizontal bands and a blank vertical run so the
@@ -229,6 +232,29 @@ function describeSelection(sel: SelectionSnapshot | null): string {
   }
 }
 
+// The clipboard demo's settings. `clipboard` is creation-only, so the grid is rebuilt (keyed) when
+// one changes.
+type ClipboardDelimiter = "tab" | "comma" | "semicolon";
+const DELIMITERS: Record<ClipboardDelimiter, string> = { tab: "\t", comma: ",", semicolon: ";" };
+const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+function buildClipboardOptions(delimiter: ClipboardDelimiter, copyHeaders: boolean, formatCopy: boolean): ClipboardOptions {
+  return {
+    delimiter: DELIMITERS[delimiter],
+    copyHeaders,
+    ...(formatCopy
+      ? {
+        // Copy Salary as currency and headers in upper case…
+        processCellForClipboard: ({ value, colId }) =>
+          colId === "salary" && value !== "" && !Number.isNaN(Number(value)) ? CURRENCY.format(Number(value)) : value,
+        processHeaderForClipboard: ({ value }) => value.toUpperCase(),
+        // …and strip the currency back off on paste, before the number parser sees it.
+        processCellFromClipboard: ({ value, colId }) => (colId === "salary" ? value.replace(/[$,\s]/g, "") : value),
+      }
+      : {}),
+  };
+}
+
 export function SelectionDemo() {
   const [rowCount, setRowCount] = useState(120);
   const rows = useMemo(() => buildRows(rowCount), [rowCount]);
@@ -256,6 +282,16 @@ export function SelectionDemo() {
   }, []);
   useEffect(() => { refreshCanFill(); }, [fillHandle, fillRules, refreshCanFill]);
   const [headerAt, setHeaderAt] = useState<number | null>(null);
+  // Clipboard options (creation-only → part of the grid's key) and the API paste box.
+  const [clipDelimiter, setClipDelimiter] = useState<ClipboardDelimiter>("tab");
+  const [copyHeaders, setCopyHeaders] = useState(false);
+  const [formatCopy, setFormatCopy] = useState(false);
+  const clipboard = useMemo(
+    () => buildClipboardOptions(clipDelimiter, copyHeaders, formatCopy),
+    [clipDelimiter, copyHeaders, formatCopy],
+  );
+  const [pasteBox, setPasteBox] = useState("Ada\tEngineering\nGrace\tResearch");
+  const [clipStatus, setClipStatus] = useState("—");
   // App shortcuts (api.registerShortcut): the disposers returned by registration, the live rows
   // read back from api.getKeyboardShortcuts(), and what fired last.
   const approveOff = useRef<(() => void) | null>(null);
@@ -348,10 +384,40 @@ export function SelectionDemo() {
       colId: "active", key: "active", label: "Active", width: 90,
       editable: true, cellEditor: "select", cellEditorParams: { values: ["Yes", "No"] },
     },
+    // Editing contract. A nested key: "office.floor" reads and writes
+    // row.office.floor. Its parser refuses an out-of-range floor with reject(message), so the editor
+    // stays open with the typed text, outlined as invalid, the message on its tooltip; Esc cancels.
+    {
+      colId: "floor", key: "office.floor", label: "Floor", width: 90, editable: true, type: ColumnType.NUMBER,
+      valueParser: ({ value }) => {
+        const text = String(value ?? "").trim();
+        if (text === "") return null;
+        const floor = Number(text);
+        return Number.isInteger(floor) && floor >= 1 && floor <= 40 ? floor : reject("Floor must be a whole number from 1 to 40");
+      },
+    },
+    // A derived column made editable by a valueSetter (it writes Salary back as monthly × 12), and an
+    // editable function: only active employees' pay can be edited here.
+    {
+      colId: "monthly", label: "Monthly", width: 110, type: ColumnType.NUMBER,
+      editable: ({ data }) => data.active !== "No",
+      valueGetter: (row) => (typeof row.data.salary === "number" ? Math.round(row.data.salary / 12) : null),
+      valueSetter: ({ data, newValue }) => {
+        if (typeof newValue !== "number" || newValue < 0) return false;
+        data.salary = Math.round(newValue * 12);
+        return true;
+      },
+    },
   ], []);
 
   const handleReady = (api: IGridAPI) => {
     apiRef.current = api;
+    // A clipboard-option change rebuilds the grid; its app shortcuts went with the old instance.
+    approveOff.current = null;
+    searchOff.current = null;
+    setApproveOn(false);
+    setSearchOn(false);
+    setAppRows([]);
     setSelection(api.getSelection());
     api.on("selectionChanged", (ev) => {
       setSelection(ev.snapshot);
@@ -432,6 +498,7 @@ export function SelectionDemo() {
             widening the grid (e.g. a pinned auto-group column) would stretch the whole layout. */}
         <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <Grid
+            key={`${clipDelimiter}|${copyHeaders}|${formatCopy}`}
             data={rows}
             columnDefs={columnDefs}
             rowIdKey="id"
@@ -443,6 +510,8 @@ export function SelectionDemo() {
             headerKeyboardNavigation={headerKeyboardNav}
             fillHandle={fillHandle === "off" ? false : { mode: fillHandle, lists: [TITLES] }}
             fillOperation={fillRules === "app" ? appFillOperation : undefined}
+            clipboard={clipboard}
+            onError={(ev) => setClipStatus(`error (${ev.code}): ${ev.message}`)}
             style={{ width: "100%", height: "100%" }}
             onGridReady={handleReady}
           />
@@ -490,6 +559,55 @@ export function SelectionDemo() {
               cursor — navigation, clipboard, and editing keys go with it, and Tab lands the cursor
               in the header instead. Turning header keyboard nav off too leaves the grid claiming
               no navigation keys at all.
+            </p>
+          </section>
+
+          <section style={{ border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: 8, padding: 12 }}>
+            <h3 style={{ fontSize: 14, marginBottom: 8 }}>Clipboard</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <label htmlFor="clip-delimiter">Delimiter</label>
+              <select id="clip-delimiter" value={clipDelimiter} onChange={(e) => setClipDelimiter(e.target.value as ClipboardDelimiter)}>
+                <option value="tab">tab (spreadsheets)</option>
+                <option value="comma">comma</option>
+                <option value="semicolon">semicolon</option>
+              </select>
+            </div>
+            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+              <input type="checkbox" checked={copyHeaders} onChange={(e) => setCopyHeaders(e.target.checked)} />
+              Copy headers (<code>copyHeaders</code>)
+            </label>
+            <label style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+              <input type="checkbox" checked={formatCopy} onChange={(e) => setFormatCopy(e.target.checked)} />
+              Salary as currency (process hooks)
+            </label>
+            <textarea
+              aria-label="Text to paste"
+              value={pasteBox}
+              onChange={(e) => setPasteBox(e.target.value)}
+              rows={3}
+              style={{ width: "100%", marginTop: 8, fontFamily: "monospace", fontSize: 12 }}
+            />
+            <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  const wrote = apiRef.current?.pasteText(pasteBox.replace(/\\t/g, "\t")) ?? false;
+                  setClipStatus(wrote ? "pasteText wrote cells" : "pasteText wrote nothing (select a cell first)");
+                }}
+              >Paste text (API)</button>
+              <button className="btn" type="button" onClick={() => apiRef.current?.copySelection({ includeHeaders: true })}>
+                Copy with headers (API)
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
+              last: <code>{clipStatus}</code>
+            </div>
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 8 }}>
+              Changing an option rebuilds the grid (<code>clipboard</code> is creation-only).
+              Ctrl/Cmd+V uses the browser's paste event and needs no permission; the body menu's
+              Paste reads <code>navigator.clipboard</code> and reports a refusal through
+              <code> onError</code>. In the box, <code>\t</code> stands for a tab.
             </p>
           </section>
 

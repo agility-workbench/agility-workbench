@@ -108,6 +108,54 @@ equal.
 entries) and matches it with Equal or Not equal. Without a static list it
 falls back to a text box; use `filter: "set"` for values read from the rows.
 
+### Floating filters
+
+`floatingFilter: true` adds a row of filter controls under the column headers
+— try the **Floating filters** knob above. It can be switched on a mounted grid
+(`api.updateGridOptions({ floatingFilter })`, or the wrappers' prop and input),
+and each control edits the same filter model as the column's filter panel, so
+the header indicator, the panel, `filterChanged` and a saved view all agree.
+
+```ts
+const grid = createGrid(host, {
+  columnDefs: [
+    { key: "name", label: "Name", filter: "text" },
+    { key: "amount", label: "Amount", type: ColumnType.NUMBER, filter: true },
+    { key: "region", label: "Region", filter: "set" },
+    { key: "notes", label: "Notes", filter: "text", floatingFilter: false },
+  ],
+  floatingFilter: true,
+});
+```
+
+| Column filter | Floating control |
+| --- | --- |
+| `text` | a text box for one condition: the column's first operator (Contains by default) |
+| `number`, `date` | a number or date input for one condition (Equal by default) |
+| `boolean`, `dropdown` with a static `filterValues` list | an Any / value select |
+| `set`, `tree` | a read-only summary, `(2) North, South` or `All`, that opens the filter panel |
+| none, `filter: false`, `ColDef.floatingFilter: false`, row numbers and checkboxes | an empty cell |
+
+- Typing applies after the column's `filterParams.debounceMs` (else
+  `filterDebounceMs`); Enter applies at once, and a date or select applies on
+  change. Emptying the control removes the column's filter.
+- A filter set anywhere else — the panel, `setFilterModel`, `applyViewState`,
+  a clear — shows in the control. A single condition keeps its own operator
+  (set Starts with from the panel and typing goes on writing Starts with; the
+  placeholder names the operator). A model one control cannot edit — two
+  conditions, Between, Is blank — shows as read-only text until it is cleared
+  or replaced from the panel.
+- The button beside a text, number or date input opens the full filter panel;
+  so does Alt+ArrowDown in the input.
+- Keyboard: ArrowDown from a column header moves focus into that column's
+  control; Escape, or ArrowUp from a text box or summary, returns to the
+  header; Tab and Shift+Tab go through the controls in column order.
+- The row follows the header cells' widths, order, pinning and horizontal
+  scroll. Its height is the theme variable `--pte-floating-filter-height`,
+  the leaf header height when unset.
+- Screen readers hear it as the second header row, so body rows' `aria-rowindex`
+  starts at 3 while it is shown (see [Accessibility](../accessibility.mdx)).
+
 ## Set-filter values
 
 Set-filter values can come from loaded rows, a static list, or an asynchronous

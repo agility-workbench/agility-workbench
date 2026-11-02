@@ -69,5 +69,7 @@ class FactoryEditorAdapter implements ICellEditor {
   isParsed(): boolean { return this.inner.isParsed?.() ?? false; }
   focus(): void { this.inner.focus?.(); }
   isCancelBeforeStart(): boolean { return this.inner.isCancelBeforeStart?.() ?? false; }
+  isCancelAfterEnd(): boolean { return this.inner.isCancelAfterEnd?.() ?? false; }
+  getValidationMessage(): string | null | undefined { return this.inner.getValidationMessage?.(); }
   destroy(): void { this.inner.destroy?.(); }
 }

@@ -416,6 +416,16 @@ export interface GridLocaleText {
   filterClear: string;
   filterReset: string;
 
+  // ---- Floating filter row ----
+  /** Accessible name of a column's floating filter control. */
+  floatingFilterLabel: string;
+  /** The button beside a floating filter that opens the column's full filter. */
+  floatingFilterOpen: string;
+  /** A floating set filter with nothing filtered out. */
+  floatingFilterAll: string;
+  /** A floating set filter stored as the values it hides; `{values}` lists them. */
+  floatingFilterAllExcept: string;
+
   // ---- Set filter ----
   selectAll: string;
   /** The set filter's blank-values row. */
@@ -470,6 +480,8 @@ export interface GridLocaleText {
   // ---- Editors ----
   /** The select cell editor's placeholder while its values load. */
   selectEditorLoading: string;
+  /** Shown on (and announced for) a cell whose edit was refused without a message of its own. */
+  invalidCellValue: string;
 
   // ---- Cell renderers ----
   /** Accessible name of the rating renderer's stars. */
@@ -889,6 +901,12 @@ export const DEFAULT_LOCALE_TEXT: GridLocaleText = {
   filterClear: "clear",
   filterReset: "reset",
 
+  // Floating filter row
+  floatingFilterLabel: "{column} filter",
+  floatingFilterOpen: "Open {column} filter",
+  floatingFilterAll: "All",
+  floatingFilterAllExcept: "All except {values}",
+
   // Set filter
   selectAll: "(Select All)",
   blanks: "(Blanks)",
@@ -935,6 +953,7 @@ export const DEFAULT_LOCALE_TEXT: GridLocaleText = {
 
   // Editors
   selectEditorLoading: "Loading…",
+  invalidCellValue: "Invalid value",
 
   // Cell renderers
   ratingValue: "{value} of {max}",

@@ -101,6 +101,36 @@ export type CellStyle<TData = any> =
   | Partial<CSSStyleDeclaration>
   | ((params: CellClassParams<TData>) => Partial<CSSStyleDeclaration> | null | undefined);
 
+/** Argument of {@link ColDef.valueSetter}. */
+export interface ValueSetterParams<TData = any> {
+  /** The row being written; its data is `node.data`. */
+  node: IRowNode<TData>;
+  /** The row's data object (`node.data`). */
+  data: TData;
+  colDef: ColDef<TData>;
+  /** The column's public id (`colId`, else `key`). */
+  colId: string;
+  /** The column's `key`. */
+  key: string;
+  /** What the cell read before the write (through `valueGetter` when there is one). */
+  oldValue: any;
+  /** The parsed, accepted value to store. */
+  newValue: any;
+}
+
+/** Argument of a function {@link ColDef.editable}. */
+export interface EditableCallbackParams<TData = any> {
+  /** The row whose cell is asked about (never a group row: those are not editable). */
+  node: IRowNode<TData>;
+  /** The row's data object (`node.data`). */
+  data: TData;
+  colDef: ColDef<TData>;
+  /** The column's public id (`colId`, else `key`). */
+  colId: string;
+  /** What the cell reads (through `valueGetter` when there is one). */
+  value: any;
+}
+
 /**
  * One column (or, with `children`, one column group) of the grid.
  *
@@ -125,6 +155,11 @@ export type CellStyle<TData = any> =
  */
 export interface ColDef<TData = any> {
   colId?: string;
+  /**
+   * The row field this column reads and writes. A dot path (`"address.city"`) reaches a nested
+   * value when the row has no literal property of that exact name; a literal property wins. An
+   * edit writes the nested value, creating missing intermediate objects.
+   */
   key?: string;
   label: string;
   /**
@@ -246,10 +281,18 @@ export interface ColDef<TData = any> {
    */
   groupValueGetter?: (params: GroupValueGetterParams<TData>) => any;
   valueFormatter?: (params: ValueFormatterParams<TData>) => string;
-  // When true, cells in this column can be edited (e.g. via double-click). Defaults to false.
-  editable?: boolean;
+  /**
+   * Whether cells in this column can be edited (double-click, F2, typing, paste, fill, clear).
+   * Defaults to false. A function decides per row: it is called with the row, its data and the
+   * cell's value whenever the grid asks — opening an editor, pasting, filling, clearing, gating the
+   * body menu's Cut/Paste — so keep it cheap and free of side effects. Group rows are never
+   * editable and do not reach the function; the row-level `getRowPresentation().editable` gate and
+   * `pinnedRowsEditable` still apply on top of it.
+   */
+  editable?: boolean | ((params: EditableCallbackParams<TData>) => boolean);
   // Converts text headed for a cell — typed, pasted, filled, or a string given to setCellValue —
-  // into the stored value. Return the exported `REJECT` to refuse the text (the cell keeps its
+  // into the stored value. Return the exported `REJECT` (or `reject("message")`, whose message an
+  // open editor shows) to refuse the text (the cell keeps its
   // value). When omitted, the built-in parser for the column's `type` runs: numbers and currency
   // through Number(), dates from ISO 8601 text in the cell's stored shape, booleans from
   // true/false/yes/no/1/0, and strings verbatim; blank is null, and text the type cannot hold is
@@ -260,6 +303,20 @@ export interface ColDef<TData = any> {
   // When omitted, a default is chosen from `type` (number→number, date→date, boolean→boolean,
   // else text).
   cellEditor?: CellEditor<TData>;
+  /**
+   * Writes an edited value back to the row. Called for every write path — editor commit,
+   * `api.setCellValue`, paste, fill, clear, undo/redo — after `valueParser` and
+   * `onBeforeCellCommit` have run, instead of the default `row.data[key] = value`. Return `true`
+   * when the row changed, `false` when nothing was written (the grid then neither repaints the cell
+   * nor records an undo step). Required for a column whose `valueGetter` reads a derived or nested
+   * value: without it an edit lands on `key`, which may be the wrong field or none at all.
+   */
+  valueSetter?: (params: ValueSetterParams<TData>) => boolean;
+  /**
+   * Show this column's filter in the floating filter row under the header (`GridOptions.floatingFilter`
+   * turns the row on). Defaults to true for a column that has a filter; `false` leaves its slot empty.
+   */
+  floatingFilter?: boolean;
   // Config passed to the editor (e.g. { values } for the select editor).
   cellEditorParams?: any;
   formatterOptions?: FormatterOptions | ((params: FormatterOptionsParams) => FormatterOptions);

@@ -6,6 +6,7 @@ import { GridEventActionFrameParams, GridEventCellClickedParams, Unsubscribe } f
 import { FloatingAnchor } from "../floating/floatingAnchor";
 import { findLiveCellElement, stickyOverlayOf } from "../pinnedRows/liveCellElement";
 import { resolveActionFrameOptions } from "../../interfaces/gridOptions";
+import { readsGroupCellValue } from "../../core/groupCellValue";
 import {
   ActionFrameComponentParams,
   createActionFrameComponentRuntime,
@@ -129,7 +130,7 @@ export class ActionFrameRenderer {
     // value rule says, the same thing a copy of the cell would carry.
     let value: unknown;
     let valueFormatted: unknown;
-    if (isGroup) {
+    if (readsGroupCellValue(col, rowNode)) {
       ({ value, formatted: valueFormatted } = this.params.core.getGroupCellValue(col, rowNode));
     } else {
       value = col.getValue(rowNode);

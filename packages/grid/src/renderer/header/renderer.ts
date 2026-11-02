@@ -15,6 +15,7 @@ import {
 import { findHeaderCell } from "./headerCellLookup";
 import { HeaderAutoHeight } from "./headerAutoHeight";
 import { createHeaderWrapper, HeaderWrapperElements } from "./wrapper";
+import { FloatingFilterRenderer } from "./floatingFilterRenderer";
 
 interface HeaderRendererParams {
   core: GridCore;
@@ -46,10 +47,18 @@ export class HeaderRenderer {
   private readonly autoHeight = new HeaderAutoHeight(() => this.remeasureAutoHeight());
   /** The header height last written to the wrapper (null before the first build). */
   private appliedHeaderHeight: number | null = null;
+  /** The floating filter row under the levels (`GridOptions.floatingFilter`). */
+  private readonly floating: FloatingFilterRenderer;
 
   constructor(private params: HeaderRendererParams) {
     this.elements = createHeaderWrapper();
     this.params.root.appendChild(this.elements.wrapper);
+    this.floating = new FloatingFilterRenderer({
+      core: params.core,
+      root: params.root,
+      sections: this.elements.floating,
+      openColumnFilter: (colID, anchorEl) => params.openColumnFilter(colID, anchorEl),
+    });
   }
 
   getRefs() {
@@ -65,6 +74,20 @@ export class HeaderRenderer {
     for (const { runtime } of this.components.values()) runtime.destroy();
     this.components.clear();
     this.autoHeight.destroy();
+    this.floating.destroy();
+  }
+
+  /**
+   * Move DOM focus to a column's floating filter control (the header cursor's ArrowDown). False
+   * when the floating row is off or the column has no control there.
+   */
+  focusFloatingFilter(instanceID: string): boolean {
+    return this.floating.focusColumn(instanceID);
+  }
+
+  /** A column's floating filter cell, when the row is shown. */
+  getFloatingFilterCell(instanceID: string): HTMLElement | null {
+    return this.floating.getCellElement(instanceID);
   }
 
   buildDOM(reason: string) {
@@ -81,7 +104,7 @@ export class HeaderRenderer {
     const bodyFrame = this.params.getBodyFrame();
     const levelCount = core.getColumnModel().maxHeaderDepth;
     const geometry = this.getGeometry();
-    this.applyFrameHeights(geometry.total);
+    this.applyFrameHeights(geometry);
     this.autoHeight.reset();
     // Tear down any custom header components from the previous build before wiping their DOM, so
     // class components can release listeners/state. buildHeaderCell repopulates this map.
@@ -113,6 +136,7 @@ export class HeaderRenderer {
       }
     }
     this.applyHeaderAria(leadingHeader, leftHeader, centerHeader, rightHeader);
+    this.floating.build();
     // autoHeaderHeight: one measuring pass over the finished cells (widths applied), then the
     // grown geometry written everywhere at once.
     this.remeasureAutoHeight();
@@ -174,7 +198,26 @@ export class HeaderRenderer {
   getGeometry(): HeaderGeometry {
     const { options } = this.params.core;
     const levelCount = this.params.core.getColumnModel().maxHeaderDepth;
-    return headerGeometry(levelCount, options, this.autoHeight.getLevels(levelCount));
+    return headerGeometry(levelCount, options, this.autoHeight.getLevels(levelCount), this.floatingFilterHeight());
+  }
+
+  /**
+   * The floating filter row's height: 0 while `floatingFilter` is off, else the theme variable
+   * `--pte-floating-filter-height` (a pixel length, set by a theme's `vars`, inline on the root or
+   * by a stylesheet) and the leaf header height when it is unset. Read on every geometry pass, so a
+   * theme swap that changes it re-lays the header out with the next remeasure.
+   */
+  private floatingFilterHeight(): number {
+    const { core, root } = this.params;
+    if (!core.options.floatingFilter) return 0;
+    const name = "--pte-floating-filter-height";
+    let raw = root.style.getPropertyValue(name);
+    if (!raw && root.isConnected && typeof getComputedStyle === "function") {
+      raw = getComputedStyle(root).getPropertyValue(name);
+    }
+    const match = /^\s*(\d+(?:\.\d+)?)(?:px)?\s*$/i.exec(raw ?? "");
+    const px = match ? Number(match[1]) : NaN;
+    return Number.isFinite(px) && px > 0 ? px : core.options.leafHeaderHeight ?? core.options.headerHeight ?? 0;
   }
 
   /**
@@ -186,9 +229,12 @@ export class HeaderRenderer {
    */
   remeasureAutoHeight(): void {
     const before = this.appliedHeaderHeight;
-    if (!this.autoHeight.measure(this.getConfiguredGeometry())) return;
+    const measuredChanged = this.autoHeight.measure(this.getConfiguredGeometry());
     const geometry = this.getGeometry();
-    this.applyFrameHeights(geometry.total);
+    // The floating row's height comes from a theme variable, which a theme swap can change without
+    // any measured level moving.
+    if (!measuredChanged && geometry.floatingFilter === this.appliedFloatingHeight) return;
+    this.applyFrameHeights(geometry);
     for (const cell of this.autoHeight.getCells()) {
       const heights = geometry.cellHeights(cell.depth, cell.levelsBelow);
       cell.header.style.height = `${heights.cell}px`;
@@ -203,14 +249,38 @@ export class HeaderRenderer {
     return headerGeometry(this.params.core.getColumnModel().maxHeaderDepth, this.params.core.options);
   }
 
-  /** The header's outer heights: wrapper, sections, body frame and the rendered-height variable. */
-  private applyFrameHeights(headerHeight: number): void {
-    const { wrapper, leading, left, center, right } = this.elements;
+  /** The floating row height last written (0 when the row is off). */
+  private appliedFloatingHeight = 0;
+
+  /**
+   * The header's outer heights: wrapper, sections, floating row, body frame and the rendered-height
+   * variable. The wrapper is `total` tall (levels + floating row); the sections hold the levels.
+   *
+   * The floating row starts one pixel above the levels' bottom and runs one pixel past the
+   * wrapper's content box: its top border then covers the leaf cells' last pixel row, exactly as
+   * the wrapper's bottom border does without the row, and its own last pixel row sits under that
+   * border. Leaf header cells therefore look the same with or without the row.
+   */
+  private applyFrameHeights(geometry: HeaderGeometry): void {
+    const { wrapper, leading, left, center, right, floating } = this.elements;
+    const headerHeight = geometry.total;
+    const levelsHeight = geometry.levelsTotal;
     this.params.root.style.setProperty("--pte-rendered-header-height", `${headerHeight}px`);
-    for (const el of [wrapper, leading, left, center, right]) {
-      el.style.height = `${headerHeight}px`;
-      el.style.minHeight = `${headerHeight}px`;
+    this.params.root.style.setProperty("--pte-rendered-header-levels-height", `${levelsHeight}px`);
+    wrapper.style.height = `${headerHeight}px`;
+    wrapper.style.minHeight = `${headerHeight}px`;
+    for (const el of [leading, left, center, right]) {
+      el.style.height = `${levelsHeight}px`;
+      el.style.minHeight = `${levelsHeight}px`;
     }
+    if (geometry.floatingFilter > 0) {
+      floating.row.style.top = `${Math.max(0, levelsHeight - 1)}px`;
+      floating.row.style.height = `${geometry.floatingFilter + 1}px`;
+    } else {
+      floating.row.style.removeProperty("top");
+      floating.row.style.removeProperty("height");
+    }
+    this.appliedFloatingHeight = geometry.floatingFilter;
     const bodyFrame = this.params.getBodyFrame();
     bodyFrame.style.height = `calc(100% - ${headerHeight}px)`;
     bodyFrame.style.maxHeight = `calc(100% - ${headerHeight}px)`;
@@ -527,6 +597,7 @@ export class HeaderRenderer {
   }
 
   setFilterIndicators() {
+    this.floating.syncFromModel();
     const filters = this.params.core.getFilterModel().items;
     for (const col of this.params.core.getColumnModel().getLeaves()) {
       const hcell = this.getHeaderCell(col.instanceID);

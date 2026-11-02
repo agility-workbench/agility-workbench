@@ -13,6 +13,11 @@ interface GridScrollSyncRendererParams {
   aggregateLeft: HTMLDivElement;
   aggregateCenter: HTMLDivElement;
   aggregateRight: HTMLDivElement;
+  /** The floating filter row's scrolling sections (`GridOptions.floatingFilter`). Echoed like the
+   * header's, and sources too: focusing an input scrolls its section into view. */
+  floatingLeft?: HTMLDivElement;
+  floatingCenter?: HTMLDivElement;
+  floatingRight?: HTMLDivElement;
   onWindowUpdate: (scrollSrc: HTMLDivElement) => void;
   onHorizontalSync?: (left: number, center: number, right: number) => void;
   /** Synchronously on every vertical body scroll and after every horizontal re-sync, ahead of the
@@ -69,6 +74,10 @@ export class GridScrollSyncRenderer {
     this.params.aggregateRight.addEventListener("scroll", () => {
       this.syncRightScroll(this.params.aggregateRight.scrollLeft);
     });
+    const { floatingLeft, floatingCenter, floatingRight } = this.params;
+    floatingLeft?.addEventListener("scroll", () => this.syncLeftScroll(floatingLeft.scrollLeft));
+    floatingCenter?.addEventListener("scroll", () => this.syncCenterScroll(floatingCenter.scrollLeft));
+    floatingRight?.addEventListener("scroll", () => this.syncRightScroll(floatingRight.scrollLeft));
   }
 
   scheduleWindowUpdate(scrollSrc: HTMLDivElement) {
@@ -85,6 +94,7 @@ export class GridScrollSyncRenderer {
     this.params.leftHeader.scrollLeft = scrollLeft;
     this.params.hScrollLeft.scrollLeft = scrollLeft;
     this.params.aggregateLeft.scrollLeft = scrollLeft;
+    if (this.params.floatingLeft) this.params.floatingLeft.scrollLeft = scrollLeft;
     this.notifyHorizontalSync();
   }
 
@@ -93,6 +103,7 @@ export class GridScrollSyncRenderer {
     this.params.centerHeader.scrollLeft = scrollLeft;
     this.params.hScrollCenter.scrollLeft = scrollLeft;
     this.params.aggregateCenter.scrollLeft = scrollLeft;
+    if (this.params.floatingCenter) this.params.floatingCenter.scrollLeft = scrollLeft;
     this.notifyHorizontalSync();
   }
 
@@ -101,6 +112,7 @@ export class GridScrollSyncRenderer {
     this.params.rightHeader.scrollLeft = scrollLeft;
     this.params.hScrollRight.scrollLeft = scrollLeft;
     this.params.aggregateRight.scrollLeft = scrollLeft;
+    if (this.params.floatingRight) this.params.floatingRight.scrollLeft = scrollLeft;
     this.notifyHorizontalSync();
   }
 

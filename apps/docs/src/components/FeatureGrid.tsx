@@ -4,6 +4,7 @@ import {
   ColumnType,
   Grid,
   SparklineRenderer,
+  reject,
   type ActionFrameComponentParams,
   type CellRendererParams,
   type GridProps,
@@ -296,7 +297,7 @@ const labels: Record<DemoFeature, [string, string]> = {
   filtering: ["Filtering", "Search rows, switch the search to Find in its ⋯ options, or use a column filter"],
   sorting: ["Sorting", "Shift-click sort icons for an ordered multi-sort"],
   selection: ["Selection", "Drag a range or select rows from row numbers"],
-  editing: ["Editing", "Double-click a writable cell; use Enter or Tab"],
+  editing: ["Editing", "Double-click a writable cell; Units refuses bad text, Unit price writes Revenue, a Blocked owner is locked"],
   grouping: ["Grouping", "Expand regions and inspect live aggregate values"],
   pivot: ["Pivot", "Regions × Status revenue matrix — toggle Pivot in the toolbar, customize roles via Columns"],
   sheets: ["Sheets", "Data + pivot sheets as footer tabs — press + for a new pivot sheet"],
@@ -439,7 +440,47 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
     case "selection":
       break;
     case "editing":
-      columnDefs = baseColumns.map((column) => ({ ...column, editable: ["status", "units", "revenue", "owner"].includes(column.colId ?? ""), cellEditor: column.colId === "status" ? "select" : undefined, cellEditorParams: column.colId === "status" ? { values: statuses } : undefined }));
+      columnDefs = [
+        ...baseColumns.map((column): ReactColDef => {
+          switch (column.colId) {
+            case "status":
+              return { ...column, editable: true, cellEditor: "select", cellEditorParams: { values: statuses } };
+            // A refused edit: text that is not a whole number of 0 or more keeps the editor open,
+            // marked invalid, with the message shown and announced.
+            case "units":
+              return {
+                ...column,
+                editable: true,
+                valueParser: ({ value }) => {
+                  const units = Number(value);
+                  return value !== "" && Number.isInteger(units) && units >= 0 ? units : reject("Units must be a whole number of 0 or more");
+                },
+              };
+            // Per-row editability: a blocked order's owner is locked.
+            case "owner":
+              return { ...column, editable: ({ data }) => data.status !== "Blocked" };
+            case "revenue":
+              return { ...column, editable: true };
+            default:
+              return column;
+          }
+        }),
+        // A derived column made editable by a valueSetter: it reads revenue per unit and writes
+        // revenue back as price × units.
+        {
+          colId: "unitPrice",
+          label: "Unit price",
+          width: 130,
+          type: ColumnType.CURRENCY,
+          editable: true,
+          valueGetter: (row) => (row.data.units ? row.data.revenue / row.data.units : null),
+          valueSetter: ({ data, newValue }) => {
+            if (typeof newValue !== "number" || !data.units) return false;
+            data.revenue = Math.round(newValue * data.units * 100) / 100;
+            return true;
+          },
+        },
+      ];
       break;
     case "grouping":
       featureProps = {
@@ -503,8 +544,11 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       break;
     case "tree-data":
       rowData = treeRows;
-      columnDefs = [{ key: "status", label: "Status", width: 130 }, { key: "owner", label: "Owner", width: 160 }, { key: "revenue", label: "Budget", type: ColumnType.CURRENCY, width: 150 }];
-      featureProps = { treeData: { mode: "parent", getParentId: (row: Order) => row.parentId, getLabel: (row: Order) => row.customer, columnDef: { label: "Workspace", width: 260 } } };
+      // Budget sums on every parent: a parent's cell shows the total of the leaves under it.
+      columnDefs = [{ key: "status", label: "Status", width: 130 }, { key: "owner", label: "Owner", width: 160 }, { key: "revenue", label: "Budget", type: ColumnType.CURRENCY, width: 150, aggFunc: "sum" }];
+      // `filterIncludesDescendants` lives inside `treeData`, which holds callbacks, so its knob is
+      // read here rather than emitted by knobs.ts (a knob prop would replace the whole object).
+      featureProps = { treeData: { mode: "parent", getParentId: (row: Order) => row.parentId, getLabel: (row: Order) => row.customer, columnDef: { label: "Workspace", width: 260 }, filterIncludesDescendants: knobValues.filterIncludesDescendants === true } };
       break;
     case "pinned-rows":
       // The bands come from the knobs, which name `pinnedTop` / `pinnedBottom` by reference.

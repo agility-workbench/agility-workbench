@@ -2,10 +2,14 @@ import {
   ColumnType,
   createGrid,
   formatChord,
+  reject,
+  type ClipboardOptions,
   type ColDef,
   type FillOperationParams,
   type FillOperationResult,
+  type GridEventErrorParams,
   type ICellEditor,
+  type IGridAPI,
   type ICellEditorParams,
   type SelectionSnapshot,
   type ValueFormatterParams,
@@ -52,6 +56,8 @@ type EmployeeRow = {
   projects: number | "";
   active: string;
   joinedOn: Date;
+  // Nested, for the dotted-key column (key: "office.floor").
+  office: { floor: number | null };
 };
 
 const FIRST_NAMES = [
@@ -115,6 +121,7 @@ function buildRows(count: number): EmployeeRow[] {
     projects: maybe(Math.floor(rand() * 25)),
     active: maybe(rand() > 0.2 ? "Yes" : "No") as string,
     joinedOn: new Date(startDate + Math.floor(rand() * (endDate - startDate))),
+    office: { floor: ((i % 12) + 1) as number | null },
   }));
 
   // Guarantee a couple of obvious, fully-blank horizontal bands and a blank vertical run so the
@@ -246,6 +253,30 @@ const COLUMNS: ColDef[] = [
     colId: "active", key: "active", label: "Active", width: 90,
     editable: true, cellEditor: "select", cellEditorParams: { values: ["Yes", "No"] },
   },
+  // Editing contract. A nested key: "office.floor" reads and writes
+  // row.office.floor. Its parser refuses an out-of-range floor with reject(message), so the editor
+  // stays open with the typed text, outlined as invalid, the message on its tooltip; Esc cancels.
+  {
+    colId: "floor", key: "office.floor", label: "Floor", width: 90, editable: true, type: ColumnType.NUMBER,
+    valueParser: ({ value }) => {
+      const text = String(value ?? "").trim();
+      if (text === "") return null;
+      const floor = Number(text);
+      return Number.isInteger(floor) && floor >= 1 && floor <= 40 ? floor : reject("Floor must be a whole number from 1 to 40");
+    },
+  },
+  // A derived column made editable by a valueSetter (it writes Salary back as monthly × 12), and an
+  // editable function: only active employees' pay can be edited here.
+  {
+    colId: "monthly", label: "Monthly", width: 110, type: ColumnType.NUMBER,
+    editable: ({ data }) => data.active !== "No",
+    valueGetter: (row) => (typeof row.data.salary === "number" ? Math.round(row.data.salary / 12) : null),
+    valueSetter: ({ data, newValue }) => {
+      if (typeof newValue !== "number" || newValue < 0) return false;
+      data.salary = Math.round(newValue * 12);
+      return true;
+    },
+  },
 ];
 
 // Chords printed with formatChord, so the platform decides the spelling ("Ctrl+→" vs "⌘→").
@@ -289,6 +320,28 @@ function describeSelection(sel: SelectionSnapshot | null): string {
   }
 }
 
+// The clipboard panel's settings. `clipboard` is creation-only, so changing one rebuilds the grid.
+type ClipboardDelimiter = "tab" | "comma" | "semicolon";
+const DELIMITERS: Record<ClipboardDelimiter, string> = { tab: "\t", comma: ",", semicolon: ";" };
+const CURRENCY = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+function buildClipboardOptions(delimiter: ClipboardDelimiter, copyHeaders: boolean, formatCopy: boolean): ClipboardOptions {
+  return {
+    delimiter: DELIMITERS[delimiter],
+    copyHeaders,
+    ...(formatCopy
+      ? {
+        // Copy Salary as currency and headers in upper case…
+        processCellForClipboard: ({ value, colId }) =>
+          colId === "salary" && value !== "" && !Number.isNaN(Number(value)) ? CURRENCY.format(Number(value)) : value,
+        processHeaderForClipboard: ({ value }) => value.toUpperCase(),
+        // …and strip the currency back off on paste, before the number parser sees it.
+        processCellFromClipboard: ({ value, colId }) => (colId === "salary" ? value.replace(/[$,\s]/g, "") : value),
+      } satisfies ClipboardOptions
+      : {}),
+  };
+}
+
 export function mountSelectionDemo(container: HTMLElement): () => void {
   let rowCount = 120;
   // Which fill rules apply: the grid's own, or the page's `appFillOperation`.
@@ -296,6 +349,21 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   let active: { viewIdx?: number; colIdx?: number } | null = null;
   let selection: SelectionSnapshot | null = null;
   let headerAt: number | null = null;
+  // Runtime options, remembered so a clipboard rebuild recreates the grid as the controls show it.
+  let cellSelection: boolean | "text" = true;
+  let headerKeyboardNavigation = true;
+  let fillHandleMode: "auto" | "copy" | "off" = "auto";
+  // Clipboard options (creation-only) and the API paste box.
+  let clipDelimiter: ClipboardDelimiter = "tab";
+  let copyHeaders = false;
+  let formatCopy = false;
+  const clipStatus = h("code", { text: "—" });
+  const pasteBox = h("textarea", {
+    rows: 3,
+    "aria-label": "Text to paste",
+    style: { width: "100%", marginTop: "8px", fontFamily: "monospace", fontSize: "12px" },
+  });
+  pasteBox.value = "Ada\tEngineering\nGrace\tResearch";
 
   const host = gridHost();
   const summary = h("div", { style: { fontSize: "13px", fontWeight: "600" } });
@@ -393,10 +461,15 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
           { value: "false", label: "false — inert cells" },
         ],
         "true",
-        value => api.updateGridOptions({ cellSelection: value === "text" ? "text" : value === "true" }),
+        value => {
+          cellSelection = value === "text" ? "text" : value === "true";
+          api.updateGridOptions({ cellSelection });
+        },
       )),
-      field("Header keyboard nav", checkbox(true, checked =>
-        api.updateGridOptions({ headerKeyboardNavigation: checked }))),
+      field("Header keyboard nav", checkbox(true, checked => {
+        headerKeyboardNavigation = checked;
+        api.updateGridOptions({ headerKeyboardNavigation });
+      })),
       // The fill handle is a runtime option too: the default series behaviour, copy-only, or off.
       // `lists: [TITLES]` makes the Title column cycle its ladder — a spreadsheet's custom lists.
       field("Fill handle", select(
@@ -407,9 +480,8 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
         ],
         "auto",
         value => {
-          api.updateGridOptions({
-            fillHandle: value === "off" ? false : { mode: value === "copy" ? "copy" : "auto", lists: [TITLES] },
-          });
+          fillHandleMode = value === "off" ? "off" : value === "copy" ? "copy" : "auto";
+          api.updateGridOptions({ fillHandle: fillHandleOption() });
           refreshCanFill();
         },
       )),
@@ -482,6 +554,51 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
         h("section", {
           style: { border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: "8px", padding: "12px" },
         },
+          h("h3", { text: "Clipboard", style: { fontSize: "14px", marginBottom: "8px" } }),
+          field("Delimiter", select(
+            [
+              { value: "tab", label: "tab (spreadsheets)" },
+              { value: "comma", label: "comma" },
+              { value: "semicolon", label: "semicolon" },
+            ],
+            clipDelimiter,
+            value => {
+              clipDelimiter = value as ClipboardDelimiter;
+              rebuildGrid();
+            },
+          )),
+          h("div", { style: { marginTop: "6px" } },
+            field("Copy headers (copyHeaders)", checkbox(false, checked => {
+              copyHeaders = checked;
+              rebuildGrid();
+            })),
+          ),
+          h("div", { style: { marginTop: "6px" } },
+            field("Salary as currency (process hooks)", checkbox(false, checked => {
+              formatCopy = checked;
+              rebuildGrid();
+            })),
+          ),
+          pasteBox,
+          h("div", { style: { display: "flex", gap: "8px", marginTop: "6px" } },
+            btn("Paste text (API)", () => {
+              const wrote = api.pasteText(pasteBox.value.replace(/\\t/g, "\t"));
+              clipStatus.textContent = wrote ? "pasteText wrote cells" : "pasteText wrote nothing (select a cell first)";
+            }),
+            btn("Copy with headers (API)", () => api.copySelection({ includeHeaders: true })),
+          ),
+          h("div", { style: { fontSize: "12px", color: "#6b7280", marginTop: "6px" } }, "last: ", clipStatus),
+          h("p", {
+            text: "Changing an option rebuilds the grid (clipboard is creation-only). Ctrl/Cmd+V uses "
+              + "the browser's paste event and needs no permission; the body menu's Paste reads "
+              + "navigator.clipboard and reports a refusal through onError. In the box, \\t stands "
+              + "for a tab.",
+            style: { fontSize: "11px", color: "#9ca3af", marginTop: "8px" },
+          }),
+        ),
+        h("section", {
+          style: { border: "1px solid var(--pte-frame-border-color, #ccc)", borderRadius: "8px", padding: "12px" },
+        },
           h("h3", { text: "App shortcuts", style: { fontSize: "14px", marginBottom: "8px" } }),
           field(`Approve selection — ${fmt("mod+shift+y")} (fresh chord)`, checkbox(false, toggleApprove)),
           h("div", { style: { marginTop: "6px" } },
@@ -504,33 +621,71 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
     ),
   ));
 
-  const api = createGrid(host, {
-    rowData: buildRows(rowCount),
-    columnDefs: COLUMNS,
-    rowIdKey: "id",
-    rowNumbers: true,
-    quickFilter: true,
-    rowSelection: true,
-    selectAllRowsOnHeaderClick: true,
-    fillHandle: { lists: [TITLES] },
-    fillOperation: params => (fillRules === "app" ? appFillOperation(params) : undefined),
-  });
+  function fillHandleOption() {
+    return fillHandleMode === "off" ? false : { mode: fillHandleMode, lists: [TITLES] };
+  }
 
-  const offSelection = api.on("selectionChanged", ev => {
-    selection = ev.snapshot;
+  let offs: Array<() => void> = [];
+  function buildGrid(): IGridAPI {
+    const next = createGrid(host, {
+      rowData: buildRows(rowCount),
+      columnDefs: COLUMNS,
+      rowIdKey: "id",
+      rowNumbers: true,
+      quickFilter: true,
+      rowSelection: true,
+      selectAllRowsOnHeaderClick: true,
+      cellSelection,
+      headerKeyboardNavigation,
+      fillHandle: fillHandleOption(),
+      fillOperation: params => (fillRules === "app" ? appFillOperation(params) : undefined),
+      clipboard: buildClipboardOptions(clipDelimiter, copyHeaders, formatCopy),
+      onError: (ev: GridEventErrorParams) => {
+        clipStatus.textContent = `error (${ev.code}): ${ev.message}`;
+      },
+    });
+    offs = [
+      next.on("selectionChanged", ev => {
+        selection = ev.snapshot;
+        renderReadout();
+        refreshCanFill();
+      }),
+      next.on("cellsChanged", () => refreshCanFill()),
+      next.on("focusChanged", ev => {
+        active = { viewIdx: ev.viewIdx, colIdx: ev.colIdx };
+        renderReadout();
+      }),
+      // The header cursor is a separate position from the body's (they are mutually exclusive).
+      next.on("headerFocusChanged", ev => {
+        headerAt = ev.colIdx ?? null;
+        renderReadout();
+      }),
+    ];
+    return next;
+  }
+
+  // A clipboard option changed: rebuild, re-registering the app shortcuts that were on.
+  function rebuildGrid(): void {
+    const hadApprove = approveOff != null;
+    const hadSearch = searchOff != null;
+    approveOff?.();
+    searchOff?.();
+    approveOff = searchOff = null;
+    offs.forEach(off => off());
+    api.destroy();
+    host.replaceChildren();
+    active = null;
+    headerAt = null;
+    api = buildGrid();
+    if (hadApprove) toggleApprove(true);
+    if (hadSearch) toggleSearch(true);
+    selection = api.getSelection();
     renderReadout();
+    refreshAppShortcuts();
     refreshCanFill();
-  });
-  const offCells = api.on("cellsChanged", () => refreshCanFill());
-  const offFocus = api.on("focusChanged", ev => {
-    active = { viewIdx: ev.viewIdx, colIdx: ev.colIdx };
-    renderReadout();
-  });
-  // The header cursor is a separate position from the body's (they are mutually exclusive).
-  const offHeaderFocus = api.on("headerFocusChanged", ev => {
-    headerAt = ev.colIdx ?? null;
-    renderReadout();
-  });
+  }
+
+  let api = buildGrid();
 
   selection = api.getSelection();
   renderReadout();
@@ -559,10 +714,7 @@ export function mountSelectionDemo(container: HTMLElement): () => void {
   }
 
   return () => {
-    offSelection();
-    offFocus();
-    offHeaderFocus();
-    offCells();
+    offs.forEach(off => off());
     approveOff?.();
     searchOff?.();
     api.destroy();

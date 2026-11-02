@@ -1,7 +1,7 @@
 import type { HeaderHeightOptions } from "../core/headerGeometry";
 import { AggregateKind } from "../interfaces/aggregate";
 import { GridAnnouncer } from "./announcer";
-import { ActiveDescendantTracker } from "./aria";
+import { ActiveDescendantTracker, headerAriaRowCount } from "./aria";
 import { centerCellAt, RowPoolDef } from "./types";
 import { isTrue } from "../misc";
 import { ExportOptions } from "../export/export";
@@ -407,7 +407,12 @@ export class GridRenderer {
         this._pinnedRowsRenderer?.findCellElement(position, rowIndex, colIdx) ?? null,
       repaintCell: (rowId, colId) => this._repaintCell(rowId, colId),
       api: () => null,
+      announce: (message) => this._announcer.announce(message),
     });
+    // `api.stopEditing()` with no value commits the open editor's own value (probed structurally,
+    // like the fill controller above).
+    const apiWithEdit = this.api as unknown as { setEditController?: (c: { commitEditor: () => void }) => void };
+    apiWithEdit.setEditController?.({ commitEditor: () => this._cellEditRenderer.commitEditor() });
     this._exportRenderer = new ExportRenderer({
       core: this.core,
       leafColumns: () => this._leafColumns,
@@ -454,12 +459,14 @@ export class GridRenderer {
           // The menu copies through the same builder as Ctrl/Cmd+C, with the selection it opened on
           // and the clicked cell as the fallback when nothing is selected.
           copySelection: ({ includeHeaders, ctx }) => this._clipboardRenderer.copy({
-            withHeaders: includeHeaders,
+            // Plain Copy follows `clipboard.copyHeaders`; Copy with headers always includes them.
+            withHeaders: includeHeaders ? true : undefined,
             selection: ctx.selection,
             fallbackCell: { colId: ctx.colId, node: ctx.node },
           }),
           cutSelection: () => this._clipboardRenderer.cut(),
-          pasteSelection: () => void this._clipboardRenderer.paste(),
+          // No paste event behind a menu click: read the async clipboard; a refusal emits `error`.
+          pasteSelection: () => void this._clipboardRenderer.paste("menu"),
           hasEditableCells: () => this._clipboardRenderer.hasEditableCells(),
           canFillDown: () => this._fillHandle.canFillDown(),
           canFillRight: () => this._fillHandle.canFillRight(),
@@ -737,6 +744,7 @@ export class GridRenderer {
       toggleColumnSelection: (colID, mode) => this.core.dispatch({ type: "columnSelectSet", colId: colID, mode }),
       openColumnMenu: (trigger, colID, anchor) => this._columnMenuOpener.openColumnMenu(trigger, colID, anchor),
       openColumnFilter: (colID, anchorEl) => this._columnMenuOpener.openFilterMenu(colID, anchorEl),
+      focusFloatingFilter: (instanceID) => this._headerRenderer.focusFloatingFilter(instanceID),
     });
     // After both cursor handlers exist: the router registers their bindings, and a duplicate chord
     // within one scope throws here rather than surfacing as a keystroke that quietly does the wrong
@@ -806,6 +814,7 @@ export class GridRenderer {
       centerHeader: headerRefs.center,
       rightHeader: headerRefs.right,
       headerWrapper: headerRefs.wrapper,
+      floatingFilterSections: headerRefs.floating,
       hScrollContainer: horizontalScroll.container,
       hScrollLeadingParent: horizontalScroll.leadingParent,
       hScrollLeftParent: horizontalScroll.leftParent,
@@ -842,6 +851,8 @@ export class GridRenderer {
       rightSpacer: bodyWrapper.rightSpacer,
       aggregateLeft: aggregateRefs.left,
       aggregateRight: aggregateRefs.right,
+      floatingLeft: headerRefs.floating.left,
+      floatingRight: headerRefs.floating.right,
       // Observed next to the root: toolbar, sheet tabs and pagination resize the body inside a
       // fixed root, and every step below depends on the body's size, not the root's.
       body: bodyWrapper.body,
@@ -880,6 +891,9 @@ export class GridRenderer {
       aggregateLeft: aggregateRefs.left,
       aggregateCenter: aggregateRefs.center,
       aggregateRight: aggregateRefs.right,
+      floatingLeft: headerRefs.floating.left,
+      floatingCenter: headerRefs.floating.center,
+      floatingRight: headerRefs.floating.right,
       onHorizontalSync: (left, center, right) => {
         this._pinnedRowsRenderer.syncHorizontal(left, center, right);
         // Column virtualization: the centre's rendered columns follow its scroll offset, through the
@@ -1336,6 +1350,17 @@ export class GridRenderer {
       || previous.rangeSelection !== options.rangeSelection
       || previous.cellSelection !== options.cellSelection;
     if (fillChanged) this._fillHandle.cancelDrag();
+
+    // The floating filter row adds or removes a header row: the header (and its height budget)
+    // rebuilds, the widths re-flow into the new sections, and every body row's aria-rowindex shifts
+    // by one, so the window repaints and the counts follow.
+    if (previous.floatingFilter !== options.floatingFilter) {
+      this._buildHeaderDOM("floatingFilter");
+      this._columnLayoutRenderer.updateColumnWidths();
+      this._maybeUpdatePoolSize();
+      this._bodyWindowRenderer.update(true, undefined);
+      this._refreshAriaCounts();
+    }
     if (previous.highlightActiveCell !== options.highlightActiveCell || fillChanged) {
       this._selectionRenderer.refreshSelectionStyles();
     }
@@ -2280,8 +2305,8 @@ export class GridRenderer {
   // (virtualization/pagination-independent) + data band rows + the aggregate row while shown;
   // colcount = visible leaf columns.
   //
-  // Row indexes: the header is 1 and a body row is its absolute display number + 1 (2..N+1, stamped
-  // by the body window). A model row pinned into a band keeps its body slot's index (it is one of
+  // Row indexes: the header is 1 (the floating filter row, while shown, is 2) and a body row is its
+  // absolute display number + the header rows (2..N+1, or 3..N+2; stamped by the body window). A model row pinned into a band keeps its body slot's index (it is one of
   // the N). Data band rows (pinnedTop/BottomRowData) and the aggregate row are numbered AFTER the
   // body — top band, bottom band, then the aggregate row — not in visual order: a body row's index
   // is its visible row number, which must not shift when rows are pinned. The sticky overlay is
@@ -2305,7 +2330,7 @@ export class GridRenderer {
     // With the body's total unknown, the rows after it have no honest index either: bands and the
     // aggregate row then carry none.
     const totalKnown = rowModel.isTotalRowCountKnown?.() ?? true;
-    const afterBody = totalKnown ? rowModel.getViewTotalCount() + 2 : null;
+    const afterBody = totalKnown ? rowModel.getViewTotalCount() + headerAriaRowCount(this.core.options) + 1 : null;
     const afterBands = this._pinnedRowsRenderer?.stampAriaRowIndexes(afterBody) ?? afterBody;
     const aggregateRow = this._aggregateRowRenderer?.getCenterRow();
     if (aggregateRow) {

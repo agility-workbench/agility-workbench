@@ -12,6 +12,9 @@ interface PinnedSectionLayoutRendererParams {
   rightSpacer: HTMLDivElement;
   aggregateLeft: HTMLDivElement;
   aggregateRight: HTMLDivElement;
+  /** The floating filter row's pinned sections, clamped exactly like the header's above them. */
+  floatingLeft?: HTMLDivElement;
+  floatingRight?: HTMLDivElement;
   /** The rest of the grid's resize path, run after the clamp: the scrollbar strip and body-frame
    * budget, the vertical extent, the row pool, full-width rows, the pinned-row bands (which clamp
    * their sections themselves — their widths depend on band content, not just the root) and
@@ -86,9 +89,11 @@ export class PinnedSectionLayoutRenderer {
     this.appliedCap = maxWidth;
     const p = this.params;
     for (const el of [p.leftHeader, p.hScrollLeftParent, p.leftSpacer, p.aggregateLeft,
-      p.hScrollRightParent, p.rightSpacer, p.aggregateRight]) {
-      el.style.maxWidth = maxWidth;
+      p.hScrollRightParent, p.rightSpacer, p.aggregateRight, p.floatingLeft]) {
+      if (el) el.style.maxWidth = maxWidth;
     }
-    p.rightHeader.style.maxWidth = `calc(${maxWidth} + var(--pte-scrollbar-gutter-active, 0px))`;
+    for (const el of [p.rightHeader, p.floatingRight]) {
+      if (el) el.style.maxWidth = `calc(${maxWidth} + var(--pte-scrollbar-gutter-active, 0px))`;
+    }
   }
 }

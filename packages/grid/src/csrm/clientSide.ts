@@ -11,6 +11,7 @@ import {
 import { IRowModelListener } from "@grid/interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
+import { writeKeyPath } from "../column/keyPath";
 import {
   buildGroupTree, createGrandTotalNode, createGroupFooterNode, FlattenFooters, flattenGroupTree, groupFooterNodeId,
 } from "./rowGroup";
@@ -370,7 +371,7 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         options: this.treeData,
         nestedParents: this.nestedTreeParents,
         includedIds: new Set(this.filteredIdx.map(i => this.nodes[i].id)),
-        sortRank: new Map(this.sortedIdx.map((i, rank) => [this.nodes[i].id, rank])),
+        sortRank: this.treeSortRank(),
         expansion: this.groupExpansion,
         defaultExpanded: this.groupDefaultExpanded,
         onMissingParent: (rowId, parentId) => {
@@ -379,6 +380,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
           this.warnedMissingTreeParents.add(key);
           console.warn(`Tree data parent "${parentId}" for row "${rowId}" was not found; rendering it as a root.`);
         },
+        // Tree parents aggregate exactly like group rows: the same configured columns, through
+        // the same calculator, over the leaves of the filtered tree under them.
+        computeAggregates,
       });
       roots = result.roots;
       groupNodesById = result.expandableNodesById;
@@ -482,8 +486,19 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     }
   }
 
-  // Footer rows for the tree just built. Row grouping only: a tree-data parent is a data row (its
-  // own cells are data, not totals) and pivot mode has its own Total root. The grand total is
+  // Sibling order for the tree build. Normally the filtered display order; with
+  // `filterIncludesDescendants` the descendants a filter dropped come back under a matching row,
+  // so every row needs a rank and the whole store is sorted instead.
+  private treeSortRank(): Map<string, number> {
+    const order = this.treeData?.filterIncludesDescendants === true
+      && this.filteredIdx.length < this.nodes.length
+      ? this.sortIndices(this.nodes.map((_, i) => i), this.sortModel)
+      : this.sortedIdx;
+    return new Map(order.map((i, rank) => [this.nodes[i].id, rank]));
+  }
+
+  // Footer rows for the tree just built. Row grouping only: tree data has no per-parent footers (a
+  // tree parent carries its aggregates on its own row) and pivot mode has its own Total root. The grand total is
   // computed over every filtered leaf — the footer aggregate row's "all" row set, whatever the
   // page — with the same per-column rule as the group rows (configured aggregates only).
   private rebuildFooterNodes(
@@ -575,10 +590,12 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
     return undefined;
   }
 
-  setCellValue(rowId: string, key: string, value: any): boolean {
+  setCellValue(rowId: string, key: string, value: any, write?: (node: IRowNode<Row>) => boolean): boolean {
     const node = this.nodesMap.get(rowId);
     if (!node) return false;
-    (node.data as any)[key] = value;
+    // A column `valueSetter` writes the row itself and says whether it changed anything; otherwise
+    // the key (a dot path reaches a nested value) takes the value.
+    if (!(write ? write(node) : writeKeyPath(node.data, key, value))) return false;
     // The edited value may belong to a group key, a pivot key or an aggregated column, so nothing
     // derived from the node store can be reused on the next request.
     this.derivedTreeValid = false;
@@ -624,7 +641,12 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private setSorts(sort: SortModel): void {
-    this.sortedIdx = this.filteredIdx.slice();
+    this.sortedIdx = this.sortIndices(this.filteredIdx.slice(), sort);
+  }
+
+  // Sort node indices (in place) by the sort model; shared by the filtered display order and the
+  // whole-store rank a `filterIncludesDescendants` tree needs for descendants the filter dropped.
+  private sortIndices(indices: number[], sort: SortModel): number[] {
     const comparators = sort.items
       // A column's comparator may not be resolved yet (e.g. an initial sort seeded before the first
       // data load identifies comparators); skip such items rather than crash. They sort correctly on
@@ -636,8 +658,9 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
         const cmp = col.comparator!;
         return (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => cmp(a, b, nodeA, nodeB) * mult;
       });
+    if (comparators.length === 0) return indices;
 
-    this.sortedIdx.sort((a, b) => {
+    return indices.sort((a, b) => {
       for (const cmp of comparators) {
         const result = cmp(this.nodes[a].data, this.nodes[b].data, this.nodes[a], this.nodes[b]);
         if (result !== 0) return result;
@@ -688,8 +711,23 @@ export class ClientSideRowModel<Row extends object = any> implements IRowModel<R
       return;
     }
 
-    const rows = this.getAggregateRows();
+    // Tree data totals the same rows its parents do — the leaves of the filtered tree — so the
+    // footer agrees with the root parents instead of adding the parents' own values on top.
+    const rows = this.treeData && this.aggregateScope === "all" ? this.treeLeaves() : this.getAggregateRows();
     this.aggregateValues = this.aggregateCalculator.calculateAggregates(this.leafColumns, this.aggregates, rows);
+  }
+
+  // The leaves of the filtered tree (kept rows with no kept children), in display order.
+  private treeLeaves(): IRowNode<Row>[] {
+    const out: IRowNode<Row>[] = [];
+    const walk = (nodes: IRowNode<Row>[]) => {
+      for (const node of nodes) {
+        if (node.children && node.children.length > 0) walk(node.children);
+        else if (!node.isGroup) out.push(node);
+      }
+    };
+    walk(this.groupRoots);
+    return out;
   }
 
   getAggregateValues(): Map<string, any> {
