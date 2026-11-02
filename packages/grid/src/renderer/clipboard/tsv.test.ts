@@ -127,3 +127,18 @@ describe("serializeNodesToTSV group rows", () => {
     expect(serializeNodesToTSV([autoGroupCol(), col], [node], false, groupValue)).toBe("EMEA (2)\t$1200");
   });
 });
+
+describe("custom delimiter", () => {
+  it("parseTSV splits on a literal (multi-character) delimiter and keeps tabs inside fields", () => {
+    expect(parseTSV("a;b\nc;d\n", ";")).toEqual([["a", "b"], ["c", "d"]]);
+    expect(parseTSV("a::b::c", "::")).toEqual([["a", "b", "c"]]);
+    expect(parseTSV("a\tb,c", ",")).toEqual([["a\tb", "c"]]);
+    expect(parseTSV('"x,y",z', ",")).toEqual([["x,y", "z"]]);
+  });
+
+  it("escapeTSV quotes a field that contains the delimiter", () => {
+    expect(escapeTSV("a,b", ",")).toBe('"a,b"');
+    expect(escapeTSV("a\tb", ",")).toBe("a\tb");
+    expect(escapeTSV("a\tb")).toBe('"a\tb"');
+  });
+});

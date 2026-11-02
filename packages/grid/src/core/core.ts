@@ -18,7 +18,8 @@ import {
   InternalGridOptions,
   QuickFilterBehavior,
   QuickFilterMatchMode,
-  REJECT,
+  isRejection,
+  rejectionMessage,
   ResetPageTrigger,
   RowPinnedPosition,
   RowPresentation,
@@ -33,7 +34,7 @@ import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { QuickFilterFind } from "./quickFilterFind";
 import { GridPivotLayerState, GridPivotStateLayers } from "../interfaces/gridView";
 import { groupRowLabel, IRowNode, isExpandableNode } from "../interfaces/iRowNode";
-import { groupCellValue, GroupCellValue } from "./groupCellValue";
+import { groupCellValue, GroupCellValue, readsGroupCellValue } from "./groupCellValue";
 import {
   GridEventHandler,
   GridEventMap,
@@ -43,6 +44,7 @@ import {
   Unsubscribe,
 } from "../events/events";
 import { isTrue, validatePageSizes, valuesAreSame } from "../misc";
+import { readKeyPath, writeKeyPath } from "../column/keyPath";
 import { ColDef, GroupValueGetterParams } from "../interfaces/column";
 import { ITextMeasurer, TextMeasureParams } from "../interfaces/iTextMeasure";
 import { ColumnModel } from "../column/columnModel";
@@ -510,6 +512,8 @@ export class GridCore implements IGridCore {
       cellSelection: options.cellSelection ?? true, // true | false | "text"
       rangeSelection: options.rangeSelection ?? true,
       fillHandle: options.fillHandle ?? true,
+      floatingFilter: isTrue(options.floatingFilter),
+      clipboard: options.clipboard,
       columnSelection: options.columnSelection ?? true,
       headerKeyboardNavigation: options.headerKeyboardNavigation ?? true,
       showColumnButtonsOnHover: isTrue(options.showColumnButtonsOnHover),
@@ -3081,8 +3085,8 @@ export class GridCore implements IGridCore {
   /**
    * What a group row's cell holds for `col`: the aggregate stamped on the node for that column,
    * else the group label when `col` is the group's label column, else the column's
-   * `groupValueGetter` result, else nothing. Precondition: `node.isGroup`; a leaf gets the empty
-   * result. The one rule click payloads, menus, the ActionFrame, the body cell and the clipboard
+   * `groupValueGetter` result, else nothing. Also a real tree parent's aggregated cell (its
+   * aggregate; see `readsGroupCellValue`). Any other data row gets the empty result. The one rule click payloads, menus, the ActionFrame, the body cell and the clipboard
    * read (the clipboard through this method, the rule itself in `groupCellValue`).
    */
   getGroupCellValue(col: Column, node: IRowNode): GroupCellValue {
@@ -3101,7 +3105,7 @@ export class GridCore implements IGridCore {
    * leaf rule.
    */
   getNodeCellValue(col: Column, node: IRowNode): unknown {
-    return node.isGroup ? this.getGroupCellValue(col, node).value : col.getValue(node);
+    return readsGroupCellValue(col, node) ? this.getGroupCellValue(col, node).value : col.getValue(node);
   }
 
   /**
@@ -3581,15 +3585,16 @@ export class GridCore implements IGridCore {
   }
 
   // A5: run the application's pre-commit hook for one proposed write. The hook sees the stored
-  // (post-valueParser) form and may veto (REJECT → null), transform (any other value), or accept
-  // (undefined) the write. `cell` must already be normalized (public colId + instance id).
+  // (post-valueParser) form and may veto (REJECT or reject(message) → { rejected }), transform (any
+  // other value), or accept (undefined) the write. `cell` must already be normalized (public colId
+  // + instance id).
   private beforeCellCommit(
     cell: CellRef,
     row: IRowNode,
     oldValue: unknown,
     value: unknown,
     source: CellCommitSource,
-  ): { value: unknown } | null {
+  ): { value: unknown; rejected?: undefined } | { rejected: true; message?: string } {
     const hook = this.options.onBeforeCellCommit;
     if (!hook) return { value };
     const result = hook({
@@ -3601,18 +3606,50 @@ export class GridCore implements IGridCore {
       oldValue,
       source,
     });
-    if (result === REJECT) return null;
+    if (isRejection(result)) return { rejected: true, message: rejectionMessage(result) };
     return { value: result === undefined ? value : result };
   }
 
   // Write a cell value wherever the row lives: through the row model, or — for application-pinned
-  // data rows — directly into the application-provided data object (mirroring setCellValue).
-  private writeCellValue(cell: CellRef, key: string, value: unknown): boolean {
-    if (this.rowModel.setCellValue(cell.rowId, key, value)) return true;
+  // data rows — directly into the application-provided data object (mirroring setCellValue). A
+  // column `valueSetter` replaces the default key write (a dot-path key reaches a nested value).
+  // Returns whether anything was written: false for an unknown row, or a setter returning false.
+  private writeCellValue(cell: CellRef, col: Column, value: unknown): boolean {
+    const setter = col.valueSetter;
+    const write = setter
+      ? (node: IRowNode) => setter({
+        node,
+        data: node.data,
+        colDef: col.col,
+        colId: col.colId,
+        key: col.key,
+        oldValue: col.getValue(node),
+        newValue: value,
+      }) === true
+      : undefined;
+    // A model row answers for itself (a setter's false is final); otherwise an application-pinned
+    // row, which never enters the row model.
+    if (this.rowModel.getRowNode(cell.rowId)) return this.rowModel.setCellValue(cell.rowId, col.key, value, write);
     const pinned = this.getDisplayedPinnedRowRef(cell.rowId);
-    if (!pinned) return false;
-    (pinned.node.data as any)[key] = value;
-    return true;
+    if (pinned) return write ? write(pinned.node) : writeKeyPath(pinned.node.data, col.key, value);
+    return this.rowModel.setCellValue(cell.rowId, col.key, value, write);
+  }
+
+  // Write one accepted value and say whether the cell changed. A plain column compares the slot
+  // it writes (storage space) before the write, so an equal value is a no-op without asking twice.
+  // A `valueSetter` column compares what the cell reads before and after the setter (the setter
+  // may store something other than the value it was given); a setter returning false is no write.
+  // `written` reports whether the write reached the row at all.
+  private writeCellChecked(
+    cell: CellRef, col: Column, row: IRowNode, oldValue: unknown, value: unknown,
+  ): { written: boolean; changed: boolean } {
+    if (col.valueSetter) {
+      const written = this.writeCellValue(cell, col, value);
+      return { written, changed: written && !valuesAreSame(oldValue, col.getValue(row)) };
+    }
+    const same = valuesAreSame(readKeyPath(row.data, col.key), value);
+    const written = this.writeCellValue(cell, col, value);
+    return { written, changed: written && !same };
   }
 
   /* ----- Column id normalization (public colId ⇄ internal instance id) -----
@@ -4475,21 +4512,28 @@ export class GridCore implements IGridCore {
           this.emit("editingChanged", { state: "cancelled", cell });
           break;
         }
+        // #48: a refused commit from the open editor keeps it open (and the cell editing), so the
+        // user can fix the text or press Escape. Every other refused write closes as before.
+        const keepEditorOpen = committingActiveEditor && action.fromEditor === true;
         const oldValue = col.getValue(row);
         const proposed = action.parsed
           ? action.value
           : col.parseValue(String(action.value ?? ""), row, oldValue);
         // The column refused the text (its valueParser, or the built-in parser for its type): the
         // same outcome as a hook veto, reported with the text that was refused.
-        if (proposed === REJECT) {
-          this.emit("editingChanged", { state: "rejected", cell, value: action.value, oldValue });
+        if (isRejection(proposed)) {
+          if (keepEditorOpen) this.editingCell = activeEditor;
+          this.emit("editingChanged", {
+            state: "rejected", cell, value: action.value, oldValue, message: rejectionMessage(proposed),
+          });
           break;
         }
         const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, "edit");
-        if (!hooked) {
-          // Vetoed: the editor still tears down (and the cell repaints with its old value), but
-          // nothing is written, recorded, or reported as a value change.
-          this.emit("editingChanged", { state: "rejected", cell, value: proposed, oldValue });
+        if (hooked.rejected) {
+          // Vetoed: nothing is written, recorded, or reported as a value change. The open editor
+          // stays (invalid) for an editor commit; otherwise it tears down and the cell repaints.
+          if (keepEditorOpen) this.editingCell = activeEditor;
+          this.emit("editingChanged", { state: "rejected", cell, value: proposed, oldValue, message: hooked.message });
           break;
         }
         const newValue = hooked.value;
@@ -4497,14 +4541,16 @@ export class GridCore implements IGridCore {
         // accepted value (editingChanged + cellValueChanged), but leave the row object untouched
         // and keep the step out of undo history (there is nothing of ours to undo).
         const readOnly = this.options.readOnlyEdit;
-        // Storage space, not getter space: compare the slot writeCellValue targets, before the
-        // write destroys it. A no-op write still commits the editor but is not a value change —
-        // no cellValueChanged, no undo step. readOnlyEdit writes nothing, so there is no slot to
-        // compare — always report.
-        const changed = readOnly || !valuesAreSame((row.data as any)?.[col.key], newValue);
+        // A no-op write still commits the editor but is not a value change — no cellValueChanged,
+        // no undo step (see writeCellChecked for how each kind of column decides). readOnlyEdit
+        // writes nothing, so there is nothing to compare — always report. A valueSetter that
+        // declines (returns false) writes nothing, so the cell is not repainted either.
+        let changed = readOnly;
+        let written = false;
         let recordedStep = false;
         if (!readOnly) {
-          this.writeCellValue(cell, col.key, newValue);
+          ({ changed, written } = this.writeCellChecked(cell, col, row, oldValue, newValue));
+          if (!col.valueSetter) written = true;
           if (changed && !this.applyingHistory) {
             recordedStep = this.recordHistory({ label: "edit", edits: [{ cell, oldValue, newValue }] });
           }
@@ -4516,7 +4562,7 @@ export class GridCore implements IGridCore {
         if (changed) {
           this.emit("cellValueChanged", { cell, oldValue, value: newValue, source: "edit" });
         }
-        if (!readOnly) {
+        if (!readOnly && written) {
           this.emit("cellsChanged", {
             reason: "editCommit",
             rowIds: [cell.rowId],
@@ -4553,22 +4599,19 @@ export class GridCore implements IGridCore {
             : col.parseValue(String(edit.value ?? ""), row, oldValue);
           // Text the column refused, and vetoed cells, drop out of the batch: not written, not
           // recorded, no event. The rest of the block keeps its alignment.
-          if (proposed === REJECT) continue;
+          if (isRejection(proposed)) continue;
           const hooked = this.beforeCellCommit(cell, row, oldValue, proposed, source);
-          if (!hooked) continue;
-          // Storage space, before the write (see editCommit). Unchanged cells drop out of
-          // recorded[] — and with it the batch's undo entry, events, repaint, and re-evaluation —
-          // but only after the write-succeeded check, so a failed write still falls through.
+          if (hooked.rejected) continue;
+          // Unchanged cells (see writeCellChecked) drop out of recorded[] — and with it the
+          // batch's undo entry, events, repaint, and re-evaluation; so does a failed write.
           const nextValue = hooked.value;
-          const changed = this.options.readOnlyEdit
-            || !valuesAreSame((row.data as any)?.[col.key], nextValue);
           // B7 readOnlyEdit: report every accepted cell but write none (see editCommit).
-          if (this.options.readOnlyEdit || this.writeCellValue(edit.cell, col.key, nextValue)) {
-            if (!changed) continue;
-            changedRowIds.add(edit.cell.rowId);
-            changedColIds.add(col.instanceID);
-            recorded.push({ cell, oldValue, newValue: nextValue });
-          }
+          const changed = this.options.readOnlyEdit
+            || this.writeCellChecked(edit.cell, col, row, oldValue, nextValue).changed;
+          if (!changed) continue;
+          changedRowIds.add(edit.cell.rowId);
+          changedColIds.add(col.instanceID);
+          recorded.push({ cell, oldValue, newValue: nextValue });
         }
         let recordedBatch = false;
         if (!this.options.readOnlyEdit && !this.applyingHistory && recorded.length > 0) {
@@ -4629,7 +4672,7 @@ export class GridCore implements IGridCore {
         const col = this.resolveCellColumn(edit.cell);
         if (!col) continue;
         const value = dir === "undo" ? edit.oldValue : edit.newValue;
-        if (this.writeCellValue(edit.cell, col.key, value)) {
+        if (this.writeCellValue(edit.cell, col, value)) {
           changedRowIds.add(edit.cell.rowId);
           changedColIds.add(col.instanceID);
           applied.push({ ...edit, cell: this.normalizeCellRef(edit.cell, col) });

@@ -401,6 +401,8 @@ export class NgAdapters {
       isParsed?: () => boolean;
       focus?: () => void;
       isCancelBeforeStart?: () => boolean;
+      isCancelAfterEnd?: () => boolean;
+      getValidationMessage?: () => string | null | undefined;
     };
     return class NgCellEditorAdapter implements ICellEditor {
       private el = document.createElement("div");
@@ -432,6 +434,14 @@ export class NgAdapters {
 
       isCancelBeforeStart(): boolean {
         return this.mounted?.instance.isCancelBeforeStart?.() ?? false;
+      }
+
+      isCancelAfterEnd(): boolean {
+        return this.mounted?.instance.isCancelAfterEnd?.() ?? false;
+      }
+
+      getValidationMessage(): string | null | undefined {
+        return this.mounted?.instance.getValidationMessage?.();
       }
 
       destroy(): void {

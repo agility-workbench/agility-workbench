@@ -6,6 +6,7 @@ import {
 } from "../events/events";
 import { ColumnState, GridId, IGridCore, RowData } from "./iGridCore";
 import { ColDef } from "./column";
+import type { CopySelectionOptions } from "./clipboard";
 import { GridAction } from "../events/action";
 import { CellRef, RowSelectionState, SelectionSnapshot } from "./selection";
 import { IColumnModel } from "./iColumnModel";
@@ -968,7 +969,15 @@ export interface IGridAPI<TData = any> {
   /* ----- Editing ----- */
   /** Begin editing a cell. No-op if the column is not editable or the cell doesn't exist. */
   startEditingCell(cell: CellRef): void;
-  /** Commit the current edit with the given raw value (passed through the column's valueParser). */
+  /**
+   * Commit the current edit. With no argument, commits what the open editor holds — its
+   * `getValue()`, through the column's `valueParser` (unless the editor's `isParsed()`) and
+   * `onBeforeCellCommit`, exactly as Enter does: a refused value keeps the editor open and marked
+   * invalid, and an editor whose `isCancelAfterEnd()` is true cancels instead. With a `value`,
+   * commits that raw value (passed through the column's `valueParser`) in place of the editor's,
+   * and a refused value closes the editor as before. No-op when nothing is being edited.
+   */
+  stopEditing(): void;
   stopEditing(value: unknown): void;
   /** Cancel the current edit without changing the cell value. */
   cancelEditing(): void;
@@ -1150,12 +1159,33 @@ export interface IGridAPI<TData = any> {
   getActionFrameCell(): CellRef | null;
 
   /* ----- Clipboard ----- */
-  /** Copy the current selection to the clipboard as TSV. */
-  copySelection(): void;
-  /** Copy the current selection as TSV, then clear its editable cells. */
+  /**
+   * Copy the current selection (a range, selected rows or selected columns) to the clipboard,
+   * delimited by `clipboard.delimiter` (a tab by default) and shaped by `processCellForClipboard`.
+   * `includeHeaders` prepends the column labels; unset, it follows `clipboard.copyHeaders`.
+   */
+  copySelection(options?: CopySelectionOptions): void;
+  /**
+   * Copy the current selection as {@link copySelection} does (headers per `clipboard.copyHeaders`),
+   * then clear its editable cells — one undo step.
+   */
   cutSelection(): void;
-  /** Paste the clipboard's first cell into the active cell (runs the column's valueParser). */
+  /**
+   * Paste the system clipboard into the selection through `navigator.clipboard.readText()` (which
+   * may prompt for permission). The block is placed from the selection's top-left cell (or the
+   * active cell) and tiles when the selection is an exact multiple of it. When the read is refused
+   * or unavailable (insecure context, unsupported browser) nothing is written and the grid emits an
+   * `error` event with `code: "clipboard_read_failed"`; the promise still resolves. Keyboard paste
+   * on the focused grid needs no permission — it reads the browser's `paste` event.
+   */
   paste(): Promise<void>;
+  /**
+   * Paste `text` into the current selection exactly as a keyboard paste would: rows split on
+   * `\r?\n`, fields on `clipboard.delimiter`, each cell through `processCellFromClipboard`, the
+   * column's `valueParser` and `onBeforeCellCommit`, as one undo step. Returns whether any cell was
+   * written (false with no selection or active cell, empty text, or no editable target).
+   */
+  pasteText(text: string): boolean;
 
   /* ----- Fill ----- */
   /**

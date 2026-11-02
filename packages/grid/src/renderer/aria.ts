@@ -33,6 +33,14 @@ export function stitchAriaRow(centerRowEl: HTMLElement, orderedCells: HTMLElemen
   else centerRowEl.removeAttribute("aria-owns");
 }
 
+/**
+ * ARIA rows above the body: the column header row, plus the floating filter row while
+ * `floatingFilter` shows it. A body row's `aria-rowindex` is its 1-based display number plus this.
+ */
+export function headerAriaRowCount(options: { floatingFilter?: boolean }): number {
+  return options.floatingFilter ? 2 : 1;
+}
+
 /** Stamp a body/band/aggregate cell. `globalIndex` is the leafColumnLookup global index. */
 export function stampGridCellAria(cell: HTMLElement, globalIndex?: number): void {
   cell.setAttribute("role", "gridcell");

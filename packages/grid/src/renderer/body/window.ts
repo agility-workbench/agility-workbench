@@ -1,7 +1,7 @@
 import { Column } from "../../column/column";
 import { GridCore } from "../../core/core";
 import { IRowNode } from "../../interfaces/iRowNode";
-import { stampRowHierarchyAria } from "../aria";
+import { headerAriaRowCount, stampRowHierarchyAria } from "../aria";
 import { RendererRecord } from "../renderer";
 import { RowPoolDef } from "../types";
 import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
@@ -260,9 +260,10 @@ export class BodyWindowRenderer {
       }
 
       const rowNumber = this.params.core.getRowNumberForViewIndex(viewIndex);
-      // Dataset-scoped ARIA row index: header row is 1, body rows follow their
-      // absolute display number. Only the center fragment carries it — one write per row.
-      slot.rowEl.setAttribute("aria-rowindex", String(rowNumber + 1));
+      // Dataset-scoped ARIA row index: the header row is 1 (and the floating filter row 2 while
+      // shown), body rows follow their absolute display number. Only the center fragment carries it
+      // — one write per row.
+      slot.rowEl.setAttribute("aria-rowindex", String(rowNumber + headerAriaRowCount(this.params.core.options)));
       const rowPresentation = this.applyRowStyling(slot, row, viewIndex);
       this.markGroupRow(slot, row);
 

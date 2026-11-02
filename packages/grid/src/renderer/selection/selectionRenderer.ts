@@ -979,7 +979,7 @@ export class SelectionRenderer {
     if (!col) return target;
     const value = !rowNode
       ? undefined
-      : isGroup ? this.params.core.getGroupCellValue(col, rowNode).value : col.getValue(rowNode);
+      : this.params.core.getNodeCellValue(col, rowNode);
     target.cell = { colId: col.colId, colInstanceId: col.instanceID, colIdx, value };
     return target;
   }

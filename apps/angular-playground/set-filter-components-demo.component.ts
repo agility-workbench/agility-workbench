@@ -1,4 +1,4 @@
-import { Component, input } from "@angular/core";
+import { Component, input, signal } from "@angular/core";
 import {
   AwbGrid,
   ColumnType,
@@ -201,7 +201,10 @@ type FilterPreset = keyof typeof FILTER_PRESETS;
         Stage lists its filter values as a static array, in the order to show them.
         The Account and ARR filters take up to three conditions joined with AND or OR: open either
         popover to add a condition and flip the join, or apply the same models through
-        <code>api.setFilterModel</code> with the buttons below.
+        <code>api.setFilterModel</code> with the buttons below. Floating filters adds a row of
+        filter controls under the headers (<code>floatingFilter</code>): type in Account or ARR,
+        pick from the set-filter summaries, and watch a two-condition preset turn the input into
+        read-only text.
       </p>
     </div>
     <div class="controls">
@@ -209,9 +212,13 @@ type FilterPreset = keyof typeof FILTER_PRESETS;
       <button type="button" (click)="applyPreset('arrOr')">ARR below 20k OR above 80k</button>
       <button type="button" (click)="applyPreset('arrAnd')">ARR 10k–90k AND not 40k–60k</button>
       <button type="button" (click)="applyPreset('none')">Clear filters</button>
+      <label class="toggle">
+        <input type="checkbox" [checked]="floatingFilter()" (change)="floatingFilter.set($any($event.target).checked)" />
+        Floating filters
+      </label>
     </div>
     <div class="grid-host">
-      <awb-grid [rowData]="rows" [columnDefs]="columnDefs" rowIdKey="id" (gridReady)="onReady($event)" />
+      <awb-grid [rowData]="rows" [columnDefs]="columnDefs" rowIdKey="id" [floatingFilter]="floatingFilter()" (gridReady)="onReady($event)" />
     </div>
   `,
   styles: [`
@@ -223,12 +230,14 @@ type FilterPreset = keyof typeof FILTER_PRESETS;
     h2 { font-size: 18px; margin-bottom: 4px }
     p { font-size: 13px; line-height: 1.45; opacity: 0.75 }
     .controls { display: flex; gap: 8px; flex-wrap: wrap }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px }
     .grid-host { flex: 1; min-height: 0 }
     awb-grid { display: block; width: 100%; height: 100% }
   `],
 })
 export class SetFilterComponentsDemoComponent {
   private api: IGridAPI | null = null;
+  readonly floatingFilter = signal(true);
 
   onReady(api: IGridAPI): void {
     this.api = api;

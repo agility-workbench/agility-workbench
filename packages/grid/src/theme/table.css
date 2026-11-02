@@ -12,6 +12,10 @@
      theme's `headerHeight` param emits it and the grid reads it at creation
      (resolveThemeHeaderHeightPx). The header's laid-out height is --pte-rendered-header-height,
      which the header renderer writes; themes do not set that one. */
+  /* --pte-floating-filter-height: 43px;  Height of the floating filter row (GridOptions.
+     floatingFilter). Unset, the row is as tall as the leaf header level. Read by the header renderer
+     in JS (a pixel length: a theme's `vars`, an inline style on .pte-root or a stylesheet rule), so
+     it is declared here, commented, only to stay in PteVarName. */
   --pte-row-border-size: 1px;
   --pte-font-family: Roboto, sans-serif;
   --pte-font-size: 14px;
@@ -396,6 +400,9 @@
 .pte-header::-webkit-scrollbar,
 .pte-header-left::-webkit-scrollbar,
 .pte-header-right::-webkit-scrollbar,
+.pte-floating-filter-left::-webkit-scrollbar,
+.pte-floating-filter::-webkit-scrollbar,
+.pte-floating-filter-right::-webkit-scrollbar,
 .pte-spacer::-webkit-scrollbar,
 .pte-spacer-left::-webkit-scrollbar,
 .pte-spacer-right::-webkit-scrollbar,
@@ -468,6 +475,9 @@
   .pte-header,
   .pte-header-left,
   .pte-header-right,
+  .pte-floating-filter-left,
+  .pte-floating-filter,
+  .pte-floating-filter-right,
   .pte-spacer,
   .pte-spacer-left,
   .pte-spacer-right,
@@ -507,7 +517,10 @@
 
   .pte-header,
   .pte-header-left,
-  .pte-header-right {
+  .pte-header-right,
+  .pte-floating-filter-left,
+  .pte-floating-filter,
+  .pte-floating-filter-right {
     overflow-x: auto !important;
   }
 
@@ -2323,7 +2336,8 @@
 .pte-header-pivot-hint {
   display: none;
   position: absolute;
-  top: 50%;
+  /* Centred on the column-header levels, not on a floating filter row below them. */
+  top: calc(var(--pte-rendered-header-levels-height, 100%) / 2);
   inset-inline-end: 12px;
   transform: translateY(-50%);
   font-size: 12px;
@@ -2395,6 +2409,175 @@
 
 .pte-header-right.visible {
   border-inline-start: 1px solid var(--pte-frame-border-color);
+}
+
+/* The floating filter row (GridOptions.floatingFilter): under the header levels, inside the
+   wrapper. Positioned rather than flowed so the four header sections keep the wrapper's flex row to
+   themselves; the header renderer writes its `top` (the levels' height less one pixel, so its top
+   border covers the leaf cells' last pixel row as the wrapper's bottom border otherwise does) and
+   its `height`. Its sections are sized exactly like the header sections above them — inline widths
+   and the 35% clamp from the layout passes, the scrollbar lane as inline-end padding — and scroll
+   with them. */
+.pte-floating-filter-row {
+  display: none;
+  position: absolute;
+  inset-inline: 0;
+  border-top: 1px solid var(--pte-border-color);
+  background-color: var(--pte-header-background-color);
+  z-index: 1;
+}
+
+.pte-floating-filter-row.pte-floating-filter-row-visible {
+  display: flex;
+}
+
+.pte-floating-filter-leading {
+  display: flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+  position: relative;
+}
+
+.pte-floating-filter-leading.visible,
+.pte-floating-filter-left.visible {
+  border-inline-end: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-floating-filter-left {
+  display: flex;
+  flex: 0 0 auto;
+  box-shadow: calc(var(--pte-dir, 1) * 2px) 0 5px var(--pte-shadow-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  position: relative;
+}
+
+.pte-floating-filter {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding-inline-end: 0;
+  position: relative;
+}
+
+.pte-floating-filter-right {
+  display: flex;
+  flex: 0 0 auto;
+  box-shadow: calc(var(--pte-dir, 1) * -2px) 0 5px var(--pte-shadow-color);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  position: relative;
+}
+
+.pte-floating-filter-right.visible {
+  border-inline-start: 1px solid var(--pte-frame-border-color);
+}
+
+.pte-floating-filter-cell {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding-inline: 6px;
+}
+
+.pte-floating-filter-body {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  max-height: 30px;
+  padding-block: 3px;
+}
+
+.pte-floating-filter-body > [hidden] {
+  display: none;
+}
+
+.pte-floating-filter-input,
+.pte-floating-filter-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding-block: 0;
+  padding-inline: 6px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 3px;
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: normal;
+}
+
+.pte-floating-filter-input::placeholder {
+  color: var(--pte-muted-text-color);
+  opacity: 1;
+}
+
+.pte-floating-filter-input::-webkit-outer-spin-button,
+.pte-floating-filter-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+.pte-floating-filter-input:focus,
+.pte-floating-filter-summary:focus-visible {
+  outline: 2px solid var(--pte-focus-ring-color);
+  outline-offset: -1px;
+}
+
+/* Read-only text: a set filter's selection, or a model the single input cannot edit. */
+.pte-floating-filter-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+  cursor: pointer;
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--pte-muted-text-color);
+}
+
+.pte-floating-filter-active .pte-floating-filter-summary {
+  color: var(--pte-text-color);
+}
+
+.pte-floating-filter-summary:hover {
+  background-color: var(--pte-hover-bg-color);
+}
+
+.pte-floating-filter-button {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pte-floating-filter-button:hover {
+  background-color: var(--pte-menu-btn-hover-bg);
+}
+
+.pte-floating-filter-button-active .pte-filter-icon {
+  background-color: var(--pte-hcell-filter-active-color);
 }
 
 /* Non-scrolling positioning context. The sticky group-row overlay is absolutely positioned against
@@ -4370,6 +4553,13 @@
   /* Drop the cell's 1px border so the input's content box spans the full cell (border-box). */
   border: none;
   overflow: visible;
+}
+
+/* An edit the column's parser or onBeforeCellCommit refused: the editor stays open, outlined in
+   the error colour until the user fixes the text (Enter/blur retries) or cancels (Escape). */
+/* On the editor GUI rather than the cell: the editor fills the cell and would paint over it. */
+.pte-cell.pte-cell-editing.pte-cell-invalid > * {
+  box-shadow: inset 0 0 0 2px var(--pte-invalid-color, #dc2626);
 }
 
 .pte-cell-editor-input {

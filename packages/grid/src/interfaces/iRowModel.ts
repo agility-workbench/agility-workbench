@@ -250,8 +250,11 @@ export interface IRowModel<Row = any> {
    * and the footer shows why. */
   canAggregateWholeDataset?(): boolean;
 
-  // in-place cell edit: mutate a single field of a row's data. Returns true if the row exists.
-  setCellValue(rowId: string, key: string, value: any): boolean;
+  // in-place cell edit: mutate a single field of a row's data (a dot-path key reaches a nested
+  // value when the row has no literal property of that name). `write`, when given, replaces the
+  // default write (a column's `valueSetter`) and returns whether the row changed. Returns true when
+  // the row exists and was written.
+  setCellValue(rowId: string, key: string, value: any, write?: (node: IRowNode<Row>) => boolean): boolean;
 
   applyRequest(params: IRowModelRequestParams): void;
 

@@ -9,7 +9,7 @@ import { CellValue, MergeRange, RowMeta, SheetCell, writeXlsx } from "./xlsx/wri
 import { columnName } from "./xlsx/xml";
 import { resolveColSpan } from "../renderer/body/colSpan";
 import { isoFromLocal, parseIsoDate, toLocalDate } from "../column/parsers";
-import type { GroupCellValue } from "../core/groupCellValue";
+import { isTreeAggregateCell, type GroupCellValue } from "../core/groupCellValue";
 import { resolveNumberFormatOptions } from "../column/formatters";
 import type {
   CsvExportCellProcessor,
@@ -163,6 +163,20 @@ export interface ExportConfig extends CsvWriteOptions {
    * totals.
    */
   serverSide?: { aggregateValues: ReadonlyMap<string, any> };
+  /**
+   * Client-side tree data whose parents carry aggregates: each such parent's node by its row data
+   * object (the form `rows` take). A parent's aggregated cells are written as the aggregate the
+   * grid shows, not the row's own value — in the CSV as that value, in the Excel tree outline as a
+   * SUBTOTAL formula over the parent's descendant rows (see `buildTreeDataBody`).
+   */
+  treeParents?: ReadonlyMap<object, IRowNode>;
+  /**
+   * The grid footer's current numbers by column instance id, written as static footer cells
+   * instead of formulas over the body. Set for a tree export whose parents carry aggregates: the
+   * body then mixes parent aggregates and leaf values, and the footer must say what the screen's
+   * footer says rather than re-derive it from the sheet.
+   */
+  footerValues?: ReadonlyMap<string, any>;
 }
 
 interface HeaderCell {
@@ -526,7 +540,18 @@ const buildHeaderMatrix = (layout: HeaderLayout, columnCount: number): string[][
 const groupLabelFor = (config: Pick<ExportConfig, "groupLabel">, node: IRowNode, rowCount?: number): string =>
   config.groupLabel ? config.groupLabel(node, rowCount) : groupRowLabel(node, rowCount);
 
-const getValueBundle = (row: any, col: Column, config: Pick<ExportConfig, "groupLabel">): ValueBundle => {
+const getValueBundle = (
+  row: any,
+  col: Column,
+  config: Pick<ExportConfig, "groupLabel" | "treeParents">,
+): ValueBundle => {
+  // A tree parent's aggregated column holds the aggregate over its leaves (what the grid shows).
+  const treeParent = config.treeParents && row && typeof row === "object" ? config.treeParents.get(row) : undefined;
+  if (treeParent && isTreeAggregateCell(col, treeParent)) {
+    const raw = treeParent.aggregateValues![col.instanceID];
+    if (raw == null || raw === "") return { raw: null, formatted: "" };
+    return { raw, formatted: col.formatValue(raw, treeParent) };
+  }
   const rowNode = row && typeof row === "object" && ("data" in row || (row as IRowNode).isGroup === true)
     ? row as IRowNode
     : { data: row } as IRowNode;
@@ -1336,7 +1361,11 @@ const buildFlatLeafBody = (
 
 /**
  * Tree-data export keeps real parents as ordinary data rows and emits only missing path ancestors
- * as bold synthetic headings. The generated tree column carries each node's label/path.
+ * as bold synthetic headings. The generated tree column carries each node's label/path. A parent
+ * (real or synthetic) that carries aggregates writes each aggregated column as a SUBTOTAL formula
+ * over its descendant rows — nested parents' own SUBTOTAL cells are skipped by Excel, so a parent
+ * totals its leaves just as the grid does — cached with the value recomputed over the exported
+ * leaves, or as a static value for a function Excel has no SUBTOTAL code for.
  */
 const buildTreeDataBody = (
   roots: IRowNode[],
@@ -1352,6 +1381,34 @@ const buildTreeDataBody = (
   const merges: MergeRange[] = [];
   let dataIndex = 0;
   const treeColumnIndex = columns.findIndex(column => column.isTreeColumn());
+  const opByCol = new Map((config.aggregates ?? []).map(a => [a.key, a.type]));
+  const calculator = new AggregateCalculator(config.aggFuncs ?? {});
+  // Exported leaves (rows with no children in the exported tree), in order; a parent's leaves are
+  // the slice appended while its subtree is walked.
+  const exportedLeaves: IRowNode[] = [];
+
+  // Fill a parent's aggregated cells once its subtree is on the sheet.
+  const writeParentAggregates = (
+    node: IRowNode,
+    cells: SheetCell[],
+    firstChildRow: number,
+    lastChildRow: number,
+    leaves: IRowNode[],
+  ) => {
+    const values = node.aggregateValues;
+    if (!values || lastChildRow < firstChildRow) return;
+    columns.forEach((col, colIdx) => {
+      if (colIdx === treeColumnIndex || !Object.prototype.hasOwnProperty.call(values, col.instanceID)) return;
+      const op = opByCol.get(col.instanceID);
+      const cell = op == null
+        ? staticAggregateCell(col, values[col.instanceID])
+        : aggregateCell(col, colIdx, op, calculator.calculateAggregate(col, op, leaves), firstChildRow, lastChildRow, true);
+      // A real parent is a data row: its aggregate keeps the row's body styling, not heading bold.
+      cells[colIdx] = node.isGroup
+        ? cell
+        : { ...cell, style: { ...bodyStyles[colIdx], numFmt: cell.style?.numFmt ?? bodyStyles[colIdx]?.numFmt } };
+    });
+  };
 
   const walk = (
     node: IRowNode,
@@ -1360,6 +1417,7 @@ const buildTreeDataBody = (
   ) => {
     const label = node.treeKey ?? node.groupKey ?? node.id;
     const nextPath = [...path, String(label)];
+    let ownCells: SheetCell[] | undefined;
 
     if (node.isGroup) {
       if (!flat) {
@@ -1372,6 +1430,7 @@ const buildTreeDataBody = (
             style: { bold: true },
           };
         }
+        ownCells = cells;
         rows.push(cells);
         rowMeta.push({
           outlineLevel: node.level + 1,
@@ -1392,6 +1451,7 @@ const buildTreeDataBody = (
           ? { raw: treeValue, formatted: treeValue }
           : undefined,
       );
+      ownCells = built.cells;
       rows.push(built.cells);
       merges.push(...spanMergesToRanges(built.spanMerges, firstSheetRow + rows.length - 1));
       rowMeta.push(flat ? {} : {
@@ -1402,8 +1462,19 @@ const buildTreeDataBody = (
       leafRows.push(node.data);
     }
 
-    const childrenHidden = ancestorCollapsed || (!flat && !!node.children?.length && !node.isExpanded);
-    for (const child of node.children ?? []) walk(child, nextPath, flat ? false : childrenHidden);
+    const children = node.children ?? [];
+    if (children.length === 0) {
+      if (!node.isGroup) exportedLeaves.push(node);
+      return;
+    }
+    const firstChildRow = firstSheetRow + rows.length;
+    const leafStart = exportedLeaves.length;
+    const childrenHidden = ancestorCollapsed || (!flat && !node.isExpanded);
+    for (const child of children) walk(child, nextPath, flat ? false : childrenHidden);
+    if (ownCells) {
+      const lastChildRow = firstSheetRow + rows.length - 1;
+      writeParentAggregates(node, ownCells, firstChildRow, lastChildRow, exportedLeaves.slice(leafStart));
+    }
   };
 
   for (const root of roots) walk(root, [], false);
@@ -1553,7 +1624,7 @@ export const buildXlsx = async (config: ExportConfig): Promise<Uint8Array> => {
           dataStartRow,
           dataEndRow,
           treeExport,
-          config.serverSide?.aggregateValues,
+          config.serverSide?.aggregateValues ?? config.footerValues,
           config.aggFuncs,
         )
       : null;

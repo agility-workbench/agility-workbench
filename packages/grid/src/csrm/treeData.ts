@@ -158,6 +158,12 @@ export interface BuildTreeDataParams<Row> {
   expansion: Map<string, boolean>;
   defaultExpanded: number;
   onMissingParent?: (rowId: string, parentId: string) => void;
+  /**
+   * Per-parent aggregates, called once per kept parent (synthetic or real) with the leaves of the
+   * filtered tree under it in display order; the result is stamped on the node's `aggregateValues`.
+   * Omitted when no column carries an aggregate, and parents then carry none.
+   */
+  computeAggregates?: (leaves: IRowNode<Row>[]) => { [key: string]: any } | undefined;
 }
 
 export interface TreeDataResult<Row> {
@@ -182,6 +188,7 @@ export function buildTreeData<Row extends object>(
     expansion,
     defaultExpanded,
     onMissingParent,
+    computeAggregates,
   } = params;
 
   // prepareTreeRows already drops duplicate ids, and the row model turns a colliding add into an
@@ -387,22 +394,52 @@ export function buildTreeData<Row extends object>(
   };
   sortTree(fullRoots);
 
-  // Keep every matching data node plus the ancestors required to reach it. Synthetic nodes never
+  // Keep every matching data node plus the ancestors required to reach it — and, under
+  // `filterIncludesDescendants`, every descendant of a matching row too. Synthetic nodes never
   // match by themselves. Clone child arrays through pruning so hidden branches do not leak into the
   // flattened view, while the full expandable-node map keeps expansion state stable across filters.
-  const prune = (node: IRowNode<Row>): IRowNode<Row> | undefined => {
+  const keepDescendants = options.filterIncludesDescendants === true;
+  const prune = (node: IRowNode<Row>, ancestorMatched: boolean): IRowNode<Row> | undefined => {
+    const selfMatches = ancestorMatched || (!node.isGroup && includedIds.has(node.id));
     const keptChildren = (node.children ?? [])
-      .map(prune)
+      .map(child => prune(child, keepDescendants && selfMatches))
       .filter((child): child is IRowNode<Row> => !!child);
-    const selfMatches = !node.isGroup && includedIds.has(node.id);
     if (!selfMatches && keptChildren.length === 0) return undefined;
     node.children = keptChildren.length > 0 ? keptChildren : undefined;
     return node;
   };
 
   const roots = fullRoots
-    .map(prune)
+    .map(root => prune(root, false))
     .filter((node): node is IRowNode<Row> => !!node);
   for (const root of roots) delete root.parentId;
+  if (computeAggregates) stampTreeAggregates(roots, computeAggregates);
   return { roots, expandableNodesById };
+}
+
+/**
+ * Stamp `aggregateValues` on every parent of the FILTERED tree (the pruned roots `buildTreeData`
+ * returns): each parent aggregates the leaves under it — the kept rows with no kept children, so a
+ * matching row whose children were all filtered out counts as a leaf with its own values, and a
+ * synthetic path prefix is never one. Leaves reach the calculator in display order (`first` /
+ * `last` follow the sort). Expansion plays no part: a collapsed parent aggregates the same leaves.
+ */
+function stampTreeAggregates<Row>(
+  roots: IRowNode<Row>[],
+  computeAggregates: (leaves: IRowNode<Row>[]) => { [key: string]: any } | undefined,
+): void {
+  // Each call appends this node's leaves to `out` and returns where they start, so one shared
+  // array serves the whole walk and a parent's leaves are the slice from its start to the end.
+  const out: IRowNode<Row>[] = [];
+  const walk = (node: IRowNode<Row>): void => {
+    const children = node.children;
+    if (!children || children.length === 0) {
+      out.push(node);
+      return;
+    }
+    const start = out.length;
+    for (const child of children) walk(child);
+    node.aggregateValues = computeAggregates(out.slice(start));
+  };
+  for (const root of roots) walk(root);
 }

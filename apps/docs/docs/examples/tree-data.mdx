@@ -25,7 +25,8 @@ parent rows remain data-bearing, selectable, editable, sortable, and filterable.
 | `server` | server-side | `hasChildren(row)`; the data source answers each parent's children |
 
 The three client-side modes support ancestor-preserving filtering, sibling
-sorting, saved expansion, sticky ancestors, selection, editing, and export. A
+sorting, saved expansion, sticky ancestors, selection, editing, export, and
+[aggregation on parents](#aggregation). A
 generated hierarchy column can be configured through `treeData.columnDef` in
 every mode.
 
@@ -61,6 +62,71 @@ names the offending ids or paths and how many rows were affected:
 
 A parent cycle still throws. The server-side tree reports its own violations
 through `ServerSideDataError` (see below).
+
+## Aggregation
+
+A column with an aggregate — `aggFunc` on its definition, an `aggFuncs` custom
+function, or one picked from the column menu — totals on every tree parent the
+same way it totals on a row group, through the same functions:
+
+- **What a parent aggregates**: the leaves under it in the filtered tree — the
+  rows shown with no children of their own. A real parent's own value is not
+  one of its inputs, and a nested parent counts through its leaves, never as a
+  subtotal. A row whose children the filters all removed is a leaf again and
+  counts with its own value. `first` and `last` follow the sorted order, and a
+  collapsed parent totals the same rows as an expanded one.
+- **What a parent's cell shows**: the aggregate replaces the row's own value in
+  that column — on screen (through the column's `cellRenderer` and
+  `valueFormatter` when it has them), in `api.getCellValue`, in click,
+  ActionFrame and tooltip payloads, in find matches, in copies to the clipboard,
+  and in CSV and Excel exports, where Excel gets a `SUBTOTAL` formula over the parent's rows. The
+  parent's other columns keep its own data, and `path` ancestors the grid
+  synthesized show the aggregate in the same columns. Filters still test the
+  row's own data, and an editor on that cell still writes the row's own value,
+  so an aggregated column is usually editable on leaves only:
+  `editable: ({ node }) => !node.children?.length`.
+- **When it recomputes**: on new row data, transactions, filter and sort
+  changes, and aggregate changes, as group totals do.
+- **The footer aggregate row** totals the same leaves, so with the `"all"`
+  scope it agrees with the sum of the root parents.
+
+```ts
+const options = {
+  rowIdKey: "id",
+  treeData: { mode: "path", getPath: (row) => row.path },
+  columnDefs: [
+    { key: "name", label: "Name" },
+    { key: "size", label: "Size", type: "number", aggFunc: "sum" },
+  ],
+} satisfies GridOptions;
+// A folder row shows the summed size of the files under it.
+```
+
+Per-parent footer rows (`groupTotalRow`) apply to row grouping only; a tree
+parent carries its totals on its own row.
+
+## Filtering descendants
+
+By default a filter keeps every matching row plus the ancestors needed to reach
+it, so a matching parent shows only those of its children that match too. Set
+`treeData.filterIncludesDescendants: true` to keep every descendant of a
+matching row as well — filtering on a folder's name then shows the whole folder:
+
+```ts
+const options = {
+  treeData: {
+    mode: "parent",
+    getParentId: (row) => row.parentId,
+    filterIncludesDescendants: true,
+  },
+} satisfies GridOptions;
+```
+
+The kept descendants count as included rows for the parents' aggregates and
+sort under the active sort like any other row; expansion
+(`groupDefaultExpanded`, remembered state) works as before. The option is
+fixed at creation and applies to the client-side modes only — under
+`mode: "server"` filtering is the server's job.
 
 A mode belongs to exactly one row model. Pairing a client-side mode with
 `rowModelType: "serverSide"` — or `mode: "server"` with the client-side model —

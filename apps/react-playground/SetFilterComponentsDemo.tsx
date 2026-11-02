@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import {
   ColumnType,
@@ -161,6 +161,7 @@ function ProductGroupLabel({ label, count, level, expanded }: SetFilterGroupComp
 
 export function SetFilterComponentsDemo() {
   const apiRef = useRef<IGridAPI | null>(null);
+  const [floatingFilter, setFloatingFilter] = useState(true);
   const applyPreset = (preset: FilterPreset) => apiRef.current?.setFilterModel(FILTER_PRESETS[preset]);
 
   const columnDefs = useMemo<ReactColDef[]>(() => [
@@ -271,7 +272,10 @@ export function SetFilterComponentsDemo() {
           Stage lists its filter values as a static array, in the order to show them.
           The Account and ARR filters take up to three conditions joined with AND or OR: open either
           popover to add a condition and flip the join, or apply the same models through{" "}
-          <code>api.setFilterModel</code> with the buttons below.
+          <code>api.setFilterModel</code> with the buttons below. Floating filters adds a row of
+          filter controls under the headers (<code>floatingFilter</code>): type in Account or ARR,
+          pick from the set-filter summaries, and watch a two-condition preset turn the input into
+          read-only text.
         </p>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -279,12 +283,17 @@ export function SetFilterComponentsDemo() {
         <button type="button" onClick={() => applyPreset("arrOr")}>ARR below 20k OR above 80k</button>
         <button type="button" onClick={() => applyPreset("arrAnd")}>ARR 10k–90k AND not 40k–60k</button>
         <button type="button" onClick={() => applyPreset("none")}>Clear filters</button>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          <input type="checkbox" checked={floatingFilter} onChange={e => setFloatingFilter(e.target.checked)} />
+          Floating filters
+        </label>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <Grid
           rowData={rows}
           columnDefs={columnDefs}
           rowIdKey="id"
+          floatingFilter={floatingFilter}
           onGridReady={api => { apiRef.current = api; }}
           style={{ width: "100%", height: "100%" }}
         />

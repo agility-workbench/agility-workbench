@@ -106,7 +106,8 @@ export type { BodyMenuContext } from "./menu";
 export type { ColumnMenuContext } from "./menu";
 export { isFalse, isTrue, valuesAreSame } from "./misc";
 
-export { REJECT } from "./interfaces/gridOptions";
+export { REJECT, reject } from "./interfaces/gridOptions";
+export type { CellRejection } from "./interfaces/gridOptions";
 export {
   CREATION_ONLY_OPTION_KEYS,
   MODEL_STATE_OPTION_KEYS,
@@ -223,6 +224,7 @@ export type { MultiColumnMenuItemsGetter } from "./interfaces/gridOptions";
 export { ColumnType, NON_DEFAULTABLE_COLDEF_KEYS } from "./interfaces/column";
 export type {
   CellRendererAlias, ColDef, ColumnMenuItemsGetter, DefaultColDef, GroupValueGetterParams,
+  EditableCallbackParams, ValueSetterParams,
 } from "./interfaces/column";
 export { AggregateType } from "./interfaces/aggregate";
 export type {
@@ -388,3 +390,7 @@ export type { KeyboardScope, KeyboardShortcutInfo } from "./renderer/interaction
 // `GridOptions.localeText` / `getLocaleText` and `api.getLocaleText`.
 export { DEFAULT_LOCALE_TEXT } from "./interfaces/locale";
 export type { GetLocaleText, GridLocaleKey, GridLocaleText, LocaleTextParams } from "./interfaces/locale";
+export type {
+  ClipboardOptions, CopySelectionOptions, ProcessCellForClipboardParams, ProcessCellFromClipboardParams,
+  ProcessHeaderForClipboardParams,
+} from "./interfaces/clipboard";

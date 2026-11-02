@@ -7,6 +7,7 @@ import { GridOptions, TreeDataServerOptions } from "../interfaces/gridOptions";
 import { IRowModelListener } from "../interfaces/iRowModelListener";
 import { AggregateCalculator } from "../aggregate/calculator";
 import { Column } from "../column/column";
+import { writeKeyPath } from "../column/keyPath";
 import { BLANK_GROUP_KEY, groupKeyForValue, groupNodeId } from "../csrm/rowGroup";
 import { labelFor } from "../csrm/treeData";
 import {
@@ -416,11 +417,11 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     return chain.reverse();
   }
 
-  setCellValue(rowId: string, key: string, value: any): boolean {
+  setCellValue(rowId: string, key: string, value: any, write?: (node: IRowNode<Row>) => boolean): boolean {
     const node = this.nodesMap.get(rowId);
     if (!node) return false;
-    (node.data as any)[key] = value;
-    return true;
+    // A column `valueSetter` writes the row itself; otherwise the key (or its dot path) takes it.
+    return write ? write(node) : writeKeyPath(node.data, key, value);
   }
 
   applyRequest(params: IRowModelRequestParams): void {

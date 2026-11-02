@@ -24,6 +24,9 @@ interface ColumnLayoutRendererParams {
   centerHeader: HTMLDivElement;
   rightHeader: HTMLDivElement;
   headerWrapper: HTMLDivElement;
+  /** The floating filter row's sections (`GridOptions.floatingFilter`). Each mirrors the header
+   * section above it — width, border and scrollbar-lane padding — after every pass that sizes one. */
+  floatingFilterSections?: { leading: HTMLDivElement; left: HTMLDivElement; center: HTMLDivElement; right: HTMLDivElement };
   hScrollContainer: HTMLDivElement;
   hScrollLeadingParent: HTMLDivElement;
   hScrollLeftParent: HTMLDivElement;
@@ -319,6 +322,11 @@ export class ColumnLayoutRenderer {
       const hcell = headerCells.get(col.instanceID);
       if (hcell) hcell.style.width = `${col.computedWidth}px`;
     });
+    // The floating filter row's cells, one per visible leaf, keyed by column like the body cells.
+    this.params.headerWrapper.querySelectorAll<HTMLElement>(".pte-floating-filter-cell").forEach(el => {
+      const col = el.dataset.colId ? this.params.core.getColumnModel().getById(el.dataset.colId) : undefined;
+      if (col) el.style.width = `${col.computedWidth}px`;
+    });
 
     this.updateScrollStrip();
     this.params.updateVerticalScrollLayout?.();
@@ -415,6 +423,32 @@ export class ColumnLayoutRenderer {
       // cap plus this same lane) has to be able to clamp it, exactly as it clamps the body.
       const headerWidth = this.rightSectionWidth + gutterWidth + 1;
       setStyle(this.params.rightHeader, "width", `${headerWidth}px`);
+    }
+    this.mirrorFloatingFilterSections();
+  }
+
+  /** Copy each header section's box onto the floating filter section below it. Runs last in every
+   * pass that writes a header section (this compensation step ends each width pass). */
+  private mirrorFloatingFilterSections(): void {
+    const floating = this.params.floatingFilterSections;
+    if (!floating) return;
+    const pairs: [HTMLDivElement, HTMLDivElement][] = [
+      [this.params.leadingHeader, floating.leading],
+      [this.params.leftHeader, floating.left],
+      [this.params.centerHeader, floating.center],
+      [this.params.rightHeader, floating.right],
+    ];
+    for (const [header, section] of pairs) {
+      setStyle(section, "width", header.style.width);
+      if (section.style.minWidth !== header.style.minWidth) section.style.minWidth = header.style.minWidth;
+      setStyle(section, "paddingInlineEnd", header.style.paddingInlineEnd);
+      // Written only on a change, like every other write of this pass: a forced toggle re-serialises
+      // the class attribute even when nothing changed, and this pass runs from a ResizeObserver.
+      const visible = header.classList.contains("visible");
+      if (section.classList.contains("visible") !== visible) section.classList.toggle("visible", visible);
+      // A row shown while the columns sat scrolled starts at 0; the scroll echo only reaches it
+      // from the next scroll on.
+      if (section.scrollLeft !== header.scrollLeft) section.scrollLeft = header.scrollLeft;
     }
   }
 

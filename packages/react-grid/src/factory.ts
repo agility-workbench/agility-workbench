@@ -96,6 +96,8 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "cellSelection", props.cellSelection);
   setIfDefined(options, "rangeSelection", props.rangeSelection);
   setIfDefined(options, "fillHandle", props.fillHandle);
+  setIfDefined(options, "floatingFilter", props.floatingFilter);
+  setIfDefined(options, "clipboard", props.clipboard);
   setIfDefined(options, "columnSelection", props.columnSelection);
   setIfDefined(options, "headerKeyboardNavigation", props.headerKeyboardNavigation);
   setIfDefined(options, "showColumnButtonsOnHover", props.showColumnButtonsOnHover);

@@ -62,9 +62,11 @@ So copying a cell and pasting it into a column of the same type and format
 writes the same value back. Text the type cannot hold — `"abc"` into a number column — is **refused**: the
 cell keeps its value, nothing enters undo history, and no `cellValueChanged`
 fires, exactly as if `onBeforeCellCommit` had vetoed it. An editor commit
-reports it as `editingChanged` with `state: "rejected"`; in a paste or fill the
-cell is simply skipped and the rest of the block keeps its alignment. A custom
-`valueParser` can refuse the same way by returning the exported `REJECT`.
+reports it as `editingChanged` with `state: "rejected"` and keeps the editor
+open with the typed text (see [Invalid edits](#invalid-edits-keep-the-editor-open));
+in a paste or fill the cell is simply skipped and the rest of the block keeps
+its alignment. A custom `valueParser` can refuse the same way by returning the
+exported `REJECT`, or `reject("message")` to tell the user why.
 
 A formatter/parser pair round-trips a display format through editing:
 
@@ -130,10 +132,20 @@ editing:
 const cell = { rowId: "order-1", colId: "quantity" };
 
 api.startEditingCell(cell);
-api.stopEditing("42");
+api.stopEditing(); // commit what the editor holds, as Enter does
+api.stopEditing("42"); // or commit this raw value instead
 api.cancelEditing();
 api.setCellValue(cell, "43");
 ```
+
+`api.stopEditing()` with no argument commits the open editor's own value
+through the same pipeline as Enter: the editor's `getValue()`, the column's
+`valueParser` (unless the editor reports `isParsed()`), `onBeforeCellCommit`
+and `valueSetter`. A refused value keeps the editor open and invalid, exactly
+as Enter would, and an editor whose `isCancelAfterEnd()` returns true cancels.
+`api.stopEditing(value)` commits that raw value in place of the editor's and,
+if it is refused, closes the editor as before. Both are no-ops when nothing is
+being edited; `api.getEditingCell()` says whether something is.
 
 ## Custom editors
 
@@ -160,6 +172,81 @@ const column = {
 The React and Angular bindings accept framework components in the same
 `cellEditor` slot, with editor handles for value, focus, and parse state.
 
+Two optional editor hooks run on every commit attempt (Enter, Tab, blur,
+`api.stopEditing()`), in this order:
+
+- **`isCancelAfterEnd()`**: return true to turn the commit into a cancel — the
+  cell keeps its value and the editor closes as Escape would (a picker closed
+  without a choice; the built-in `select` editor does this while its values
+  are still loading).
+- **`getValidationMessage()`**: return a non-empty message to refuse the commit
+  before it reaches the column's parser — the editor stays open and invalid
+  with that message. Return `null`, `undefined` or `""` to let it proceed.
+
+```ts
+const skuEditor = (params: ICellEditorParams) => {
+  const input = document.createElement("input");
+  input.value = String(params.value ?? "");
+  return {
+    init: () => {},
+    getGui: () => input,
+    getValue: () => input.value,
+    focus: () => input.focus(),
+    getValidationMessage: () =>
+      /^[A-Z]{3}-\d{4}$/.test(input.value) ? null : "Use the form ABC-1234",
+  };
+};
+```
+
+React editors expose the same two methods on their imperative handle, Angular
+editors as component methods. Validation that belongs to the column rather
+than to one editor fits better in its `valueParser` or in
+`onBeforeCellCommit`, where paste and fill also see it.
+
+## Invalid edits keep the editor open
+
+When an editor commit is refused — by the editor's `getValidationMessage()`,
+the column's `valueParser` (or the built-in parser for its `type`), or
+`onBeforeCellCommit` — the editor **stays open with the text the user typed**:
+
+- the cell gets the `pte-cell-invalid` class and `aria-invalid="true"` (so does
+  the editor's element), and the default theme outlines it in
+  `--pte-invalid-color`;
+- the message becomes the editor's tooltip (`title`) and is announced to screen
+  readers. `reject("message")` supplies it; a plain `REJECT` or a parser
+  refusal uses the `invalidCellValue` locale text ("Invalid value");
+- Enter, Tab, blur or `api.stopEditing()` retries; Escape cancels and the cell
+  keeps its old value. Enter and Tab do not move the active cell until a
+  commit succeeds.
+
+```ts
+import { reject } from "@agility-workbench/grid";
+
+const column = {
+  key: "quantity",
+  label: "Quantity",
+  type: ColumnType.Number,
+  editable: true,
+  valueParser: ({ value }) => {
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 ? n : reject("Enter a whole number of 0 or more");
+  },
+} satisfies ColDef;
+```
+
+**Blur.** With `commitOnBlur: true` (the default) a refused blur commit keeps
+the editor open and invalid too. When focus moved elsewhere in the grid (or
+nowhere), the grid takes it back into the editor so the user can fix the
+value or press Escape; when focus left the grid for another control on the
+page, it stays where the user put it and the editor waits, still invalid.
+With `commitOnBlur: false` blur never commits, as before.
+
+The refusal is still reported as `editingChanged` with `state: "rejected"`,
+now carrying the `message` (if any); `api.getEditingCell()` keeps returning the
+cell while the editor is open. Writes that do not come from the open editor —
+paste, fill, clear, `api.setCellValue`, `api.stopEditing(value)` — skip or
+close as before, with no invalid state.
+
 ## Validating commits: `onBeforeCellCommit`
 
 A synchronous pre-commit hook runs before any user-initiated write — editor
@@ -167,9 +254,11 @@ commits, `setCellValue`, and each cell of a paste/cut/clear batch — *after* th
 column's `valueParser`, so it sees `{ rowId, colId, data, value, oldValue,
 source }` with `value` in its stored form. Return:
 
-- **`REJECT`** (exported sentinel) to veto the write: the cell keeps its old
-  value, nothing enters undo history, no `cellValueChanged` fires, and an
-  editor commit emits `editingChanged { state: "rejected" }` instead;
+- **`REJECT`** (exported sentinel), or **`reject("message")`**, to veto the
+  write: the cell keeps its old value, nothing enters undo history, no
+  `cellValueChanged` fires; an editor commit emits
+  `editingChanged { state: "rejected" }` and keeps the editor open and invalid
+  with the message (see above), and a batch skips the cell;
 - **a value** to store it in place of the proposed one (coerce/clamp);
 - **`undefined`** (or nothing) to accept the proposed value — return `null`
   when you mean "store an empty value".
@@ -178,6 +267,81 @@ Undo/redo replay already-accepted values and skip the hook. Server-validated
 edits that need an *async* veto should combine the sync hook (for what can be
 checked locally) with `readOnlyEdit` below — commit nothing, validate on the
 server, write back through your store.
+
+## Per-row editability: `editable` as a function
+
+`editable` takes a function for a decision per row. It receives
+`{ node, data, colDef, colId, value }` and must return `true` for the cell to
+be editable:
+
+```ts
+const column = {
+  key: "price",
+  label: "Price",
+  editable: ({ data }) => data.status !== "Closed",
+} satisfies ColDef<Order>;
+```
+
+Every path that edits a cell asks it: opening an editor (double-click, F2,
+Enter, typing, `api.startEditingCell`), paste, cut, Delete/Backspace, the fill
+handle, and the body menu's Cut and Paste items. Keep it cheap and free of
+side effects — it runs per cell. Group rows are never editable and never reach
+the function, and the row-level `getRowPresentation().editable` gate still
+applies on top of it. A column with a function still counts as editable for
+column-level decisions such as showing the fill handle's grip; the rows the
+function refuses are skipped when the fill lands.
+
+## Nested keys
+
+A `key` with dots reads and writes a nested value: `key: "address.city"` shows
+`row.address.city`, and an edit writes `row.address.city` in place (creating
+missing intermediate objects). A row with a **literal** `"address.city"`
+property keeps that property — the literal key always wins, so existing data
+whose keys contain dots behaves as before. Sorting, filtering, the quick
+filter, export and the clipboard follow, since they all read the cell value.
+
+```ts
+const columnDefs: ColDef<Customer>[] = [
+  { key: "name", label: "Name", editable: true },
+  { key: "address.city", label: "City", editable: true },
+];
+```
+
+## Writing derived values: `valueSetter`
+
+A column that reads through a `valueGetter` — a derived, combined or computed
+value — needs a `valueSetter` to be editable, otherwise the edit lands on
+`key`, which may be the wrong field or none at all. The setter receives
+`{ node, data, colDef, colId, key, oldValue, newValue }` and writes the row
+itself; return `true` when it changed the row, `false` to write nothing.
+
+```ts
+const column = {
+  colId: "fullName",
+  label: "Name",
+  editable: true,
+  valueGetter: (row) => `${row.data.first} ${row.data.last}`,
+  valueSetter: ({ data, newValue }) => {
+    const [first, ...rest] = String(newValue ?? "").trim().split(/\s+/);
+    if (!first) return false;
+    data.first = first;
+    data.last = rest.join(" ");
+    return true;
+  },
+} satisfies ColDef<Person>;
+```
+
+The setter runs on **every** write path — editor commit, `api.setCellValue`,
+paste, cut, fill, Delete/Backspace and undo/redo — on both the client-side and
+server-side row models, always *after* `valueParser` and `onBeforeCellCommit`,
+so `newValue` is the accepted, stored form. `oldValue` is what the cell read
+before the write (through the `valueGetter`). Change detection compares what
+the cell reads before and after the setter, so a setter that stores something
+other than the value it was given is still a change, and one that leaves the
+cell reading the same is not. A setter that returns `false` is no write at
+all: no repaint, no `cellValueChanged`, no undo step. Undo hands the setter
+the recorded `oldValue`, so a setter must accept the values its getter
+produces. Under `readOnlyEdit` the setter is not called.
 
 ## Edits write into your row objects
 
@@ -237,11 +401,44 @@ Ctrl/Cmd+V pastes through the browser's own `paste` event on the focused grid,
 which carries the clipboard text without asking for clipboard permission, so it
 works in every browser and in insecure (`http:`) contexts. A paste while a cell
 editor or another input inside the grid has focus belongs to that input.
-`api.paste()` and the body menu's Paste have no keyboard event to read from:
-they use `navigator.clipboard.readText()`, which some browsers refuse or do not
-offer (Firefox without the async clipboard, insecure contexts, a denied
-permission). In that case nothing is pasted and the grid logs one warning
-pointing at Ctrl/Cmd+V.
+When the clipboard carries only HTML (some spreadsheet sources), the first
+table's cells are pasted. `api.paste()` and the body menu's Paste have no
+keyboard event to read from: they use `navigator.clipboard.readText()`, which
+some browsers refuse or do not offer (Firefox without the async clipboard,
+insecure contexts, a denied permission). In that case nothing is pasted and the
+grid emits an `error` event (`onError`) with `code: "clipboard_read_failed"`
+and a message pointing at Ctrl/Cmd+V, so the application can tell the user.
+`api.pasteText(text)` pastes a string you already have into the selection
+through the same pipeline and returns whether any cell was written.
+
+### Clipboard options
+
+`clipboard` (creation-only) shapes both directions:
+
+```ts
+clipboard: {
+  delimiter: ";",          // field separator for copy and paste (default: tab)
+  copyHeaders: true,       // plain copy and cut include the header row (default: false)
+  processCellForClipboard: ({ value, colId }) => (colId === "price" ? value.replace("$", "") : value),
+  processHeaderForClipboard: ({ value }) => value.toUpperCase(),
+  processCellFromClipboard: ({ value }) => value.trim(),
+}
+```
+
+On copy, each cell's text is what the grid shows (the column's
+`valueFormatter`; a group row's label or aggregate), then
+`processCellForClipboard`, then quoting: a field containing the delimiter, a
+newline or a quote is wrapped in double quotes. Headers are the column label,
+then `processHeaderForClipboard`. `api.copySelection({ includeHeaders })`
+overrides `copyHeaders` for one call; the body menu's Copy with Headers always
+includes them.
+
+On paste, rows split on `\r?\n` (a trailing newline is ignored) and fields on
+the delimiter, honouring quoted fields. Each editable target's field goes
+through `processCellFromClipboard`, then the column's `valueParser`,
+`onBeforeCellCommit` and `valueSetter`. A hook that returns a non-string is
+taken as the final typed value and skips the parser. Read-only targets are
+skipped (they keep their slot) and never reach the hook.
 
 Every edit, paste, cut, or batch clear that changes at least one stored value
 is one undo step — a batch's entry holds only the cells that actually changed,

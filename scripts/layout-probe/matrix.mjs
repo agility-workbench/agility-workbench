@@ -68,6 +68,37 @@ export const CASES = [
     // its floor instead of the chrome yielding (the same A3.14 shape as the kitchen case).
     known: [{ steps: /^height@(320|180)$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
   },
+  // floatingFilter: a second header row of filter controls under the levels. Its sections mirror
+  // the header's (width, clamp, scrollbar lane, scroll) and each cell sits under its leaf.
+  {
+    name: "floating-filter-both",
+    config: { pinned: "both", floatingFilter: true },
+    sequences: ["scrolled", "pinToggle", "hideToggle", "headerHeight", "window", "floatingToggle"],
+  },
+  { name: "floating-filter-groups2", config: { columns: "groups2", pinned: "both", floatingFilter: true }, sequences: ["groupToggle", "scrolled"] },
+  { name: "floating-filter-huge", config: { columns: "huge", pinned: "both", floatingFilter: true }, sequences: ["scrolled"] },
+  {
+    name: "floating-filter-rtl",
+    config: { pinned: "both", floatingFilter: true, rtl: true },
+    sequences: ["scrolled", "pinToggle", "hideToggle", "floatingToggle"],
+  },
+  // Measured (wrapped, auto-height) levels above the floating row: the row moves down with them.
+  {
+    name: "floating-filter-wrap",
+    config: { columns: "groups2", pinned: "both", headerWrap: true, floatingFilter: true },
+    sequences: ["headerHeight", "hideToggle", "floatingToggle"],
+    known: [{ steps: /^height@(320|180)$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
+  },
+  {
+    name: "floating-filter-kitchen",
+    config: {
+      columns: "groups2", pinned: "both", rowNumbers: true, checkboxes: "left", aggregates: true,
+      pinnedRows: "both", pagination: true, toolbar: true, floatingFilter: true,
+    },
+    sequences: ["scrolled", "themeSwap", "headerHeight", "hiddenMount", "window", "growTall"],
+    // The kitchen case's chrome plus the floating row: the same A3.14 known entry.
+    known: [{ steps: /^(height@(320|180)|growTall@300)$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
+  },
   // enableRtl: the same layout mirrored — pinned "left" at the right edge, the vertical scrollbar
   // lane on the left, horizontal scroll from the right (scrollLeft runs negative). The invariants
   // compare along the inline axis and read the lane as inline-end padding.

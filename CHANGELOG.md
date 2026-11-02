@@ -3,6 +3,75 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.15.0 — 2026-11-02
+
+### Features
+
+- **Columns can write derived values back with `valueSetter`.** `ColDef.valueSetter` receives
+  `{ node, data, colDef, colId, key, oldValue, newValue }` and writes the row itself on every write
+  path (editor commit, `setCellValue`, paste, cut, fill, clear and undo/redo, on the client-side and
+  server-side models) after `valueParser` and `onBeforeCellCommit`. `oldValue` is the cell's read
+  value, change detection compares the read value before and after, and a setter that returns
+  `false` writes nothing: no repaint, no event, no undo step. `ValueSetterParams` is exported.
+- **A dotted `key` reads and writes nested values.** `key: "address.city"` shows and edits
+  `row.address.city`, creating missing intermediate objects on write; a row that has a literal
+  `"address.city"` property keeps using it. Sorting, filtering, the quick filter, export and the
+  clipboard follow because they read the cell value.
+- **`editable` accepts a function for per-row editability.** `editable: ({ node, data, colDef,
+  colId, value }) => boolean` is asked by every editing path, from opening an editor to paste, cut,
+  clear, fill and the body menu's Cut and Paste, on top of the `getRowPresentation().editable`
+  gate; group rows never reach it. `EditableCallbackParams` is exported.
+- **An invalid edit keeps the editor open instead of discarding the typed text.** When the column's
+  parser (or the built-in one for its type) or `onBeforeCellCommit` refuses an editor commit, the
+  editor stays open with the text, the cell gets `pte-cell-invalid` and `aria-invalid="true"`, and
+  a message is shown on the editor and announced; Escape cancels, Enter, Tab, blur or
+  `api.stopEditing()` retries, and Enter and Tab stay on the cell until a commit succeeds. The new
+  `reject("message")` refuses with words, `editingChanged { state: "rejected" }` carries the
+  message, and a refused blur commit pulls focus back unless focus left the grid. Paste, fill, clear
+  and `setCellValue` still skip refused cells silently. Custom editors can take part:
+  `ICellEditor.isCancelAfterEnd()` turns a commit into a cancel and `getValidationMessage()`
+  refuses one before the parser runs, with both hooks available to React editor handles and Angular
+  editor components. Behaviour change: `REJECT` on an editor commit used to close the editor.
+- **`api.stopEditing()` without a value commits what the editor holds.** It runs the editor's value
+  through the same pipeline as Enter, so a refused value keeps the editor open; `stopEditing(value)`
+  is unchanged.
+- **A floating filter row puts each column's filter under its header.** `floatingFilter: true`
+  (changeable at runtime; a React prop and an Angular input) adds a second header row: a text,
+  number or date input for one condition (the column's first operator, with a button to the full
+  filter), an Any/value select for boolean and static dropdown filters, and a read-only summary for
+  set and tree filters that opens the full filter. It writes the same filter model as the filter
+  panel and follows models set anywhere else; a model it cannot edit shows as read-only text.
+  ArrowDown from a header cell moves into the column's control and Escape returns.
+  `ColDef.floatingFilter: false` leaves a column's cell empty and `--pte-floating-filter-height`
+  sizes the row. Screen readers hear it as header row 2, so body rows' `aria-rowindex` starts at 3
+  while it is shown.
+- **Clipboard options shape copy and paste: delimiter, header row and per-cell transforms.** The
+  creation-only `clipboard` option takes a `delimiter` (default tab) used for copying and for
+  splitting pasted text, `copyHeaders` to put the header row on every plain copy and cut, and
+  `processCellForClipboard`, `processHeaderForClipboard` and `processCellFromClipboard`. The paste
+  hook runs before the column's `valueParser` and `onBeforeCellCommit`, and a non-string result is
+  stored as typed. `api.copySelection({ includeHeaders })` overrides `copyHeaders` for one call, and
+  the new `api.pasteText(text)` pastes a string into the selection as Ctrl+V would, as one undo step.
+- **A paste that cannot read the clipboard now reports it through the `error` event.** The body
+  menu's Paste and `api.paste()` read `navigator.clipboard.readText()`; when the browser refuses or
+  does not offer it (insecure context, denied permission) the grid emits `error` with
+  `code: "clipboard_read_failed"` instead of logging a warning, and never throws. Keyboard paste
+  needs no permission, and a clipboard that carries only an HTML table now pastes its cells.
+- **Tree parents aggregate their leaves.** Every column with a configured aggregate (`aggFunc`, a
+  custom `aggFuncs` function, or one picked from the column menu) now totals on each tree parent,
+  real rows and synthesized path prefixes alike, through the same functions as row groups. A parent
+  aggregates the leaves under it in the filtered tree, never its own value or a nested subtotal,
+  and its cell shows the aggregate on screen, in `api.getCellValue`, tooltips, find, clipboard
+  copies and CSV/Excel exports (a `SUBTOTAL` formula in Excel). Totals follow data, transaction,
+  filter and sort changes. Under tree data the footer aggregate row now totals the same leaves
+  instead of every row, which double-counted parents before. The cell stays editable when its
+  column is, and an edit writes the row's own value; use an `editable` predicate such as
+  `({ node }) => !node.children?.length` to keep parents read-only there.
+- **`treeData.filterIncludesDescendants` keeps a matching row's whole subtree.** By default a filter
+  keeps matching rows plus their ancestors; with this creation-only option it also keeps every
+  descendant of a matching row, so filtering on a folder shows the folder's contents. Kept
+  descendants sort normally, count toward their parents' aggregates and expand as before.
+  Client-side tree modes only.
 ## 1.14.0 — 2026-10-17
 
 ### Features

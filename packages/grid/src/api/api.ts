@@ -75,6 +75,7 @@ import {
 } from "../filter/setFilterTree";
 import { SortItemUpdate } from "../interfaces/sort";
 import { ClipboardRenderer } from "../renderer/clipboard/clipboardRenderer";
+import type { CopySelectionOptions } from "../interfaces/clipboard";
 import { GridHistoryState } from "../core/historyModel";
 import type { GridLocaleKey } from "../interfaces/locale";
 
@@ -119,6 +120,12 @@ export interface GridApiRenderController {
   getCenterViewportWidth: () => number;
 }
 
+/** Editor hooks provided by the renderer once it's attached (it owns the open editor). */
+export interface GridApiEditController {
+  /** Commit the open editor's own value, as Enter does. */
+  commitEditor: () => void;
+}
+
 /** Fill hooks provided by the renderer once it's attached (it owns the fill handle). */
 export interface GridApiFillController {
   canFillDown: () => boolean;
@@ -158,6 +165,7 @@ export class GridAPI implements IGridAPI {
   private _exporter: GridApiExporter | null = null;
   private _tooltip: GridApiTooltipController | null = null;
   private _fill: GridApiFillController | null = null;
+  private _edit: GridApiEditController | null = null;
   private _rowPresentation: GridApiRowPresentationController | null = null;
   private _render: GridApiRenderController | null = null;
   private _scroll: GridApiScrollController | null = null;
@@ -196,6 +204,11 @@ export class GridAPI implements IGridAPI {
   /** Wire the fill handle. Called by the renderer on attach; before that the fills warn and do nothing. */
   setFillController(controller: GridApiFillController): void {
     this._fill = controller;
+  }
+
+  /** Wire the open editor. Called by the renderer on attach; before that `stopEditing()` warns. */
+  setEditController(controller: GridApiEditController): void {
+    this._edit = controller;
   }
 
   /** Wire the scrollers. Called by the renderer on attach; before that these are no-ops. */
@@ -1753,10 +1766,20 @@ export class GridAPI implements IGridAPI {
     this.core.dispatch({ type: "editStart", cell, source: "api" });
   }
 
-  stopEditing(value: unknown): void {
+  stopEditing(...args: [] | [value: unknown]): void {
     const cell = this.core.getEditingCell();
     if (!cell) return;
-    this.core.dispatch({ type: "editCommit", cell, value });
+    // #52: with no argument, commit what the open editor holds, exactly as Enter would (its
+    // getValue through the parser and onBeforeCellCommit; a refusal keeps it open and invalid).
+    if (args.length === 0) {
+      if (!this._edit) {
+        console.warn("stopEditing() called on an api with no editor wiring; ignoring.");
+        return;
+      }
+      this._edit.commitEditor();
+      return;
+    }
+    this.core.dispatch({ type: "editCommit", cell, value: args[0] });
   }
 
   cancelEditing(): void {
@@ -1791,8 +1814,8 @@ export class GridAPI implements IGridAPI {
     return this._clipboard;
   }
 
-  copySelection(): void {
-    this.clipboard().copy();
+  copySelection(options?: CopySelectionOptions): void {
+    this.clipboard().copy({ withHeaders: options?.includeHeaders });
   }
 
   cutSelection(): void {
@@ -1801,6 +1824,10 @@ export class GridAPI implements IGridAPI {
 
   paste(): Promise<void> {
     return this.clipboard().paste();
+  }
+
+  pasteText(text: string): boolean {
+    return this.clipboard().pasteText(text);
   }
 
   // ---------------- Fill ----------------

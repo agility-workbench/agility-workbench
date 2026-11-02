@@ -21,21 +21,50 @@ export type GroupCellValueResolvers = {
 };
 
 /**
+ * Whether `node` is a real client-side tree-data row whose cell in `col` shows an aggregate: a
+ * tree parent carries `aggregateValues` for exactly the columns with a configured aggregate, and
+ * in those columns the aggregate over its leaves replaces the row's own value on every surface
+ * (cell, click payloads, `api.getCellValue`, clipboard, export). The tree column keeps the label.
+ */
+export function isTreeAggregateCell(col: Column, node: IRowNode): boolean {
+  return !node.isGroup
+    && node.isTreeData === true
+    && node.aggregateValues != null
+    && !col.isTreeColumn()
+    && Object.prototype.hasOwnProperty.call(node.aggregateValues, col.instanceID);
+}
+
+/**
+ * Whether a cell reads the group cell value rule ({@link groupCellValue}) rather than the column's
+ * own `getValue`: every cell of a group row, and the aggregated cells of a real tree parent.
+ */
+export function readsGroupCellValue(col: Column, node: IRowNode): boolean {
+  return !!node.isGroup || isTreeAggregateCell(col, node);
+}
+
+/**
  * The value convention for a group row's cell. A group row has no underlying data row, so a value
  * column reads the aggregate stamped on the node and the group's label column reads the label the
  * grid resolves. A column with a `groupValueGetter` holds what it returns; every other column is
  * empty. Kept free of the core so the clipboard serializer can share the rule with
  * `GridCore.getGroupCellValue` without a core reference; the two must never diverge.
  *
- * Precondition: `node.isGroup`. A leaf gets the empty result rather than a throw, since callers
- * read rows they did not classify themselves.
+ * Precondition: {@link readsGroupCellValue}. A real tree parent's aggregated cell holds the
+ * aggregate (blank when it is null); any other data row gets the empty result rather than a
+ * throw, since callers read rows they did not classify themselves.
  */
 export function groupCellValue(
   col: Column,
   node: IRowNode,
   resolvers: GroupCellValueResolvers,
 ): GroupCellValue {
-  if (!node.isGroup) return { ...EMPTY };
+  if (!node.isGroup) {
+    if (!isTreeAggregateCell(col, node)) return { ...EMPTY };
+    const agg = node.aggregateValues![col.instanceID];
+    return agg == null || agg === ""
+      ? { value: agg, formatted: "" }
+      : { value: agg, formatted: col.formatValue(agg, node) };
+  }
   const isLabelColumn = resolvers.isLabelColumn
     ? resolvers.isLabelColumn(col, node)
     : col.isAutoGroupColumn() || col.isTreeColumn() || col.groupLevel === node.level;

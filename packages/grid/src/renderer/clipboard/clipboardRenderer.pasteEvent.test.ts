@@ -186,42 +186,62 @@ describe("Ctrl/Cmd+V shortcut", () => {
   });
 });
 
-describe("api.paste() when the async clipboard is refused", () => {
-  it("warns once, pointing at Ctrl+V / Cmd+V, and writes nothing", async () => {
+describe("api.paste() / the body menu's Paste when the async clipboard is refused", () => {
+  it("emits an error event per attempt, pointing at Ctrl+V / Cmd+V, and writes nothing", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const core = makeCore();
+    const errors: { code: string; message: string; details?: unknown }[] = [];
+    core.on("error", ev => errors.push(ev));
     core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
     const clip = new ClipboardRenderer({
       core,
       readText: () => Promise.reject(new DOMException("Read permission denied.", "NotAllowedError")),
     });
     await clip.paste();
-    await clip.paste();
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toMatch(/Ctrl\+V \/ Cmd\+V/);
-    expect(String(warn.mock.calls[0][0])).toMatch(/Read permission denied/);
+    await clip.paste("menu");
+    expect(errors).toHaveLength(2);
+    expect(errors[0].code).toBe("clipboard_read_failed");
+    expect(errors[0].message).toMatch(/Ctrl\+V \/ Cmd\+V/);
+    expect(errors[0].message).toMatch(/Read permission denied/);
+    expect(errors[0].details).toBeInstanceOf(DOMException);
+    expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
     expect(rows(core)[0].name).toBe("alice");
   });
 
-  it("warns the same way when navigator.clipboard.readText does not exist", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("emits the same error when navigator.clipboard.readText does not exist", async () => {
     const core = makeCore();
+    const errors: { code: string }[] = [];
+    core.on("error", ev => errors.push(ev));
     core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
     const clipboard = (navigator as any).clipboard;
     const original = clipboard ? Object.getOwnPropertyDescriptor(clipboard, "readText") : undefined;
     if (clipboard) Object.defineProperty(clipboard, "readText", { value: undefined, configurable: true });
     try {
-      await new ClipboardRenderer({ core }).paste();
+      await new ClipboardRenderer({ core }).paste("menu");
     } finally {
       if (clipboard) {
         if (original) Object.defineProperty(clipboard, "readText", original);
         else delete clipboard.readText;
       }
     }
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0][0])).toMatch(/Ctrl\+V \/ Cmd\+V/);
+    expect(errors.map(e => e.code)).toEqual(["clipboard_read_failed"]);
+  });
+
+  it("never throws when navigator.clipboard itself is undefined (insecure context)", async () => {
+    const core = makeCore();
+    const errors: { code: string }[] = [];
+    core.on("error", ev => errors.push(ev));
+    core.dispatch({ type: "focusSet", viewIdx: 0, colIdx: 0 });
+    const spy = vi.spyOn(navigator, "clipboard", "get").mockReturnValue(undefined as any);
+    try {
+      await expect(new ClipboardRenderer({ core }).paste("menu")).resolves.toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+    expect(errors.map(e => e.code)).toEqual(["clipboard_read_failed"]);
+    expect(rows(core)[0].name).toBe("alice");
   });
 });
 

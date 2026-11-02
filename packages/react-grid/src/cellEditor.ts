@@ -21,6 +21,13 @@ export interface ReactCellEditorHandle {
   focus?: () => void;
   /** Return true to abort opening the editor. */
   isCancelBeforeStart?: () => boolean;
+  /** Return true to turn a commit (Enter, Tab, blur, `api.stopEditing()`) into a cancel. */
+  isCancelAfterEnd?: () => boolean;
+  /**
+   * Return a message to refuse a commit: the editor stays open with the cell marked invalid and
+   * the message shown and announced. Return null/undefined/"" to let the commit proceed.
+   */
+  getValidationMessage?: () => string | null | undefined;
 }
 
 /**
@@ -77,6 +84,14 @@ function createReactEditorClass(Component: ReactCellEditor): CellEditorClass {
 
     isCancelBeforeStart(): boolean {
       return this.handle.current?.isCancelBeforeStart?.() ?? false;
+    }
+
+    isCancelAfterEnd(): boolean {
+      return this.handle.current?.isCancelAfterEnd?.() ?? false;
+    }
+
+    getValidationMessage(): string | null | undefined {
+      return this.handle.current?.getValidationMessage?.();
     }
 
     destroy(): void {

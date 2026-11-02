@@ -153,6 +153,8 @@ const MODE_COPY: Record<RelationshipMode, {
 export function TreeDataDemo() {
   const [mode, setMode] = useState<RelationshipMode>("path");
   const [sticky, setSticky] = useState(true);
+  // treeData.filterIncludesDescendants is creation-only: toggling it remounts the grid (see key).
+  const [includeDescendants, setIncludeDescendants] = useState(false);
   const apiRef = useRef<IGridAPI | null>(null);
 
   const columns = useMemo<ReactColDef[]>(() => [
@@ -177,7 +179,10 @@ export function TreeDataDemo() {
       label: "Headcount",
       width: 120,
       type: ColumnType.NUMBER,
-      editable: true,
+      // Every parent shows the sum over the leaves under it (as filtered), in place of its own
+      // value, so only rows without children edit the number they show.
+      aggFunc: "sum",
+      editable: ({ node }) => !node.children?.length,
       cellEditor: "number",
     },
     {
@@ -218,6 +223,7 @@ export function TreeDataDemo() {
           columnDef: { label: "Organization", width: 280 },
           keyboardNavigationMode: "grid",
           enableKeyboardNavigationModeSwitch: true,
+          filterIncludesDescendants: includeDescendants,
         },
       };
     }
@@ -231,6 +237,7 @@ export function TreeDataDemo() {
           columnDef: { label: "Organization", width: 280 },
           keyboardNavigationMode: "grid",
           enableKeyboardNavigationModeSwitch: true,
+          filterIncludesDescendants: includeDescendants,
         },
       };
     }
@@ -243,9 +250,10 @@ export function TreeDataDemo() {
         columnDef: { label: "Organization", width: 280 },
         keyboardNavigationMode: "grid",
         enableKeyboardNavigationModeSwitch: true,
+        filterIncludesDescendants: includeDescendants,
       },
     };
-  }, [mode]);
+  }, [mode, includeDescendants]);
 
   const setAllExpanded = (expanded: boolean) => {
     apiRef.current?.setAllGroupsExpanded(expanded);
@@ -261,8 +269,8 @@ export function TreeDataDemo() {
           <h2>Tree data relationship modes</h2>
           <p>
             Switch 10,000 records between representations without changing the columns or interaction
-            model. Parent rows remain ordinary editable records—double-click a name, owner, headcount,
-            budget, or status.
+            model. Parent rows remain ordinary editable records—double-click a name, owner, budget, or
+            status. Headcount sums on every parent over the records beneath it.
           </p>
         </div>
         <code>{copy.example}</code>
@@ -300,12 +308,20 @@ export function TreeDataDemo() {
             />
             Sticky ancestors
           </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={includeDescendants}
+              onChange={event => setIncludeDescendants(event.target.checked)}
+            />
+            Filter keeps descendants
+          </label>
         </div>
       </div>
 
       <div className="tree-data-demo-grid">
         <Grid
-          key={mode}
+          key={`${mode}|${includeDescendants}`}
           apiRef={apiRef}
           rowData={rows}
           columnDefs={columns}

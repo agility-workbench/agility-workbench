@@ -149,7 +149,10 @@ const COLUMNS: ColDef[] = [
   { colId: "owner", key: "owner", label: "Owner", width: 150, editable: true },
   {
     colId: "headcount", key: "headcount", label: "Headcount", width: 120,
-    type: ColumnType.NUMBER, editable: true, cellEditor: "number",
+    // Every parent shows the sum over the leaves under it (as filtered), in place of its own
+    // value, so only rows without children edit the number they show.
+    type: ColumnType.NUMBER, aggFunc: "sum", editable: ({ node }) => !node.children?.length,
+    cellEditor: "number",
   },
   {
     colId: "budget", key: "budget", label: "Annual budget", width: 155,
@@ -169,11 +172,13 @@ const COLUMNS: ColDef[] = [
 function treeDataFor(
   mode: RelationshipMode,
   keyboard: TreeDataKeyboardNavigationOptions,
+  filterIncludesDescendants: boolean,
 ): { rows: OrgRow[]; treeData: TreeDataOptions<OrgRow> } {
   const columnDef = { label: "Organization", width: 280 };
   const shared = {
     getLabel: (row: OrgRow) => row.name,
     columnDef,
+    filterIncludesDescendants,
     ...keyboard,
   };
   if (mode === "parent") {
@@ -197,6 +202,8 @@ function treeDataFor(
 export function mountTreeDataDemo(container: HTMLElement): () => void {
   let mode: RelationshipMode = "path";
   let sticky = true;
+  // treeData.filterIncludesDescendants is creation-only: toggling it rebuilds the grid.
+  let includeDescendants = false;
   // Seeded into `treeData` at creation, then changed live through the API. Kept here so a
   // relationship-mode rebuild carries the current keyboard configuration into the new grid.
   const keyboard: TreeDataKeyboardNavigationOptions = {
@@ -241,7 +248,7 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
         h("p", {
           text: "Switch 10,000 records between representations without changing the columns or"
             + " interaction model. Parent rows remain ordinary editable records—double-click a name,"
-            + " owner, headcount, budget, or status.",
+            + " owner, budget, or status. Headcount sums on every parent over the records beneath it.",
         }),
       ),
       example,
@@ -255,6 +262,10 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
         field("Sticky ancestors", checkbox(sticky, value => {
           sticky = value;
           api.updateGridOptions({ groupRowsSticky: sticky });
+        })),
+        field("Filter keeps descendants", checkbox(includeDescendants, value => {
+          includeDescendants = value;
+          rebuild();
         })),
       ),
     ),
@@ -280,7 +291,7 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
    * grid — the same thing the React demo's `key={mode}` does.
    */
   function build(): void {
-    const { rows, treeData } = treeDataFor(mode, keyboard);
+    const { rows, treeData } = treeDataFor(mode, keyboard, includeDescendants);
     api = createGrid(host, {
       rowData: rows,
       columnDefs: COLUMNS,
@@ -311,6 +322,11 @@ export function mountTreeDataDemo(container: HTMLElement): () => void {
   function setMode(next: RelationshipMode): void {
     if (next === mode) return;
     mode = next;
+    rebuild();
+  }
+
+  // The relationship mode and filterIncludesDescendants are creation-time parts of `treeData`.
+  function rebuild(): void {
     unsubscribeNavMode?.();
     unsubscribeNavMode = null;
     api.destroy();

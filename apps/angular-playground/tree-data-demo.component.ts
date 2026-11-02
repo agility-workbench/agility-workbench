@@ -166,8 +166,8 @@ const MODES: RelationshipMode[] = ["path", "parent", "children"];
         <h2>Tree data relationship modes</h2>
         <p>
           Switch 10,000 records between representations without changing the columns or interaction
-          model. Parent rows remain ordinary editable records—double-click a name, owner, headcount,
-          budget, or status.
+          model. Parent rows remain ordinary editable records—double-click a name, owner, budget, or
+          status. Headcount sums on every parent over the records beneath it.
         </p>
       </div>
       <code>{{ copy().example }}</code>
@@ -200,6 +200,10 @@ const MODES: RelationshipMode[] = ["path", "parent", "children"];
         <label>
           <input type="checkbox" [checked]="sticky()" (change)="onStickyChange($event)" />
           Sticky ancestors
+        </label>
+        <label>
+          <input type="checkbox" [checked]="includeDescendants()" (change)="onIncludeDescendantsChange($event)" />
+          Filter keeps descendants
         </label>
       </div>
     </div>
@@ -342,6 +346,8 @@ export class TreeDataDemoComponent {
 
   readonly mode = signal<RelationshipMode>("path");
   readonly sticky = signal(true);
+  // treeData.filterIncludesDescendants is creation-only: toggling it remounts the grid.
+  readonly includeDescendants = signal(false);
   // React remounts the grid via key={mode}; here the @if flips false→true across a microtask.
   readonly gridVisible = signal(true);
 
@@ -374,7 +380,10 @@ export class TreeDataDemoComponent {
       label: "Headcount",
       width: 120,
       type: ColumnType.NUMBER,
-      editable: true,
+      // Every parent shows the sum over the leaves under it (as filtered), in place of its own
+      // value, so only rows without children edit the number they show.
+      aggFunc: "sum",
+      editable: ({ node }) => !node.children?.length,
       cellEditor: "number",
     },
     {
@@ -403,6 +412,7 @@ export class TreeDataDemoComponent {
 
   readonly config = computed<{ rows: OrgRow[]; treeData: TreeDataOptions<OrgRow> }>(() => {
     const mode = this.mode();
+    const filterIncludesDescendants = this.includeDescendants();
     if (mode === "parent") {
       return {
         rows: PARENT_ROWS,
@@ -413,6 +423,7 @@ export class TreeDataDemoComponent {
           columnDef: { label: "Organization", width: 280 },
           keyboardNavigationMode: "grid",
           enableKeyboardNavigationModeSwitch: true,
+          filterIncludesDescendants,
         },
       };
     }
@@ -426,6 +437,7 @@ export class TreeDataDemoComponent {
           columnDef: { label: "Organization", width: 280 },
           keyboardNavigationMode: "grid",
           enableKeyboardNavigationModeSwitch: true,
+          filterIncludesDescendants,
         },
       };
     }
@@ -438,6 +450,7 @@ export class TreeDataDemoComponent {
         columnDef: { label: "Organization", width: 280 },
         keyboardNavigationMode: "grid",
         enableKeyboardNavigationModeSwitch: true,
+        filterIncludesDescendants,
       },
     };
   });
@@ -451,7 +464,17 @@ export class TreeDataDemoComponent {
   setMode(mode: RelationshipMode): void {
     if (this.mode() === mode) return;
     this.mode.set(mode);
-    // Remount the grid for the new relationship mode (treeData is a creation-time option).
+    this.remount();
+  }
+
+  onIncludeDescendantsChange(event: Event): void {
+    this.includeDescendants.set((event.target as HTMLInputElement).checked);
+    this.remount();
+  }
+
+  // Remount the grid: the relationship mode and filterIncludesDescendants are creation-time
+  // parts of treeData.
+  private remount(): void {
     this.api = null;
     this.gridVisible.set(false);
     queueMicrotask(() => this.gridVisible.set(true));

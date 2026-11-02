@@ -53,6 +53,7 @@ React and Angular expose `rowData` through their bindings; core integrations use
 | `rangeSelection` | `boolean` | `true` |
 | `fillHandle` | `boolean \| FillHandleOptions` | `true` (`{ mode: "auto", direction: "xy", lists: [] }`; `lists` are app sequences that cycle like a spreadsheet's custom lists; needs `cellSelection: true` and `rangeSelection`) |
 | `fillOperation` | `(params: FillOperationParams) => FillOperationResult \| void` | Decide each filled cell's value: `{ value }`, `{ skipCell: true }`, or nothing for the grid's own; see [Editing → Fill handle](../examples/editing.mdx#fill-handle) |
+| `clipboard` | `ClipboardOptions` | Not set (tab-delimited, no header row). `{ delimiter, copyHeaders, processCellForClipboard, processHeaderForClipboard, processCellFromClipboard }`; creation-only; see [Editing → Clipboard options](../examples/editing.mdx#clipboard-options) |
 | `columnSelection` | `boolean` | `true` |
 | `headerKeyboardNavigation` | `boolean` | `true` (`false` makes header sort/menu/selection mouse-only) |
 | `rowSelection` | `boolean \| RowSelectionOptions` | `false` (object form configures mode and the checkbox column) |
@@ -94,6 +95,7 @@ changing them does not remount the grid or replace its API instance.
 | `showSortPriority` | `multi \| always \| never` | Priority badge behavior |
 | `quickFilter` | `boolean \| QuickFilterOptions` | Global client-side search — filters rows, or highlights matching cells with `behavior: "find"` |
 | `filterDebounceMs` | `number` | Default column-filter debounce |
+| `floatingFilter` | `boolean` | A row of filter controls under the column headers, one per filterable column (default `false`; runtime). See [Floating filters](../examples/filtering.mdx#floating-filters) |
 | `pagination` | `boolean` | Enable footer pagination |
 | `paginationControls` | `PaginationControlsOptions` | Page-picker style plus visible pagination controls and their order |
 | `pageSize` | `number` | Initial page size |
@@ -218,7 +220,7 @@ hosted in the [toolbar](#narrow-bars) is laid out by the bar instead.
 | `grandTotalRow` | `"top" \| "bottom"` | One grand-total row over every filtered row, first or last in the grouped list. Client-side row grouping only. Live in both wrappers |
 | `groupTotalRowLabel` | `(params: GroupTotalRowLabelParams) => string` | Replaces the footer label ("Total `<group>`", "Grand Total"); given the footer `node`, `groupNode`, `grandTotal`, `groupLabel`, `defaultLabel` and `aggregates` by colId. Live in both wrappers |
 | `aggFuncs` | `Record<string, AggregateFunction>` | Custom aggregate functions by name, usable wherever a built-in type is: `ColDef.aggFunc`, `api.setAggregates`, the aggregate menus (listed after the built-ins, by name), saved views and pivot measures. Each gets `{ values, rows, colId }` — raw values with blanks included — and its result renders through the column's formatter; exports write it as a static value. Creation-only. See [aggregates](../examples/grouping.mdx#custom-aggregate-functions) |
-| `treeData` | `TreeDataOptions` | Enable a row hierarchy: `path`, `parent`, or `children` on the client-side model, or `server` (per-row `hasChildren`, children fetched per parent) on the server-side one |
+| `treeData` | `TreeDataOptions` | Enable a row hierarchy: `path`, `parent`, or `children` on the client-side model, or `server` (per-row `hasChildren`, children fetched per parent) on the server-side one. Parents aggregate columns with an aggregate over their leaves; `filterIncludesDescendants: true` (client-side, creation-only) keeps every descendant of a matching row |
 | `pivotMode` | `boolean` | Start in pivot mode (client-side; exclusive with tree data). Live in both wrappers — a prop/input change toggles the mode |
 | `pivotColumns` | `string[]` | Columns to pivot on, by colId, in level order. Live in both wrappers |
 | `pivotResultColumnDef` | `Partial<ColDef>` | Overlay for every generated pivot value column |
@@ -242,7 +244,7 @@ Each `on*` option is a convenience over one core event — passing it is the sam
 | `onHistoryChanged` | `historyChanged` | The undo/redo stacks move |
 | `onColumnsChanged` | `columnsChanged` | Columns change: definitions, state restores, pin, visibility, order, sort, filter, grouping, pivot (`reason` says which) |
 | `onPaginationChanged` | `paginationChanged` | Page, page size or totals may have changed; the payload is `api.getPaginationInfo()` |
-| `onError` | `error` | A row-model request fails (`code: "row_model_error"`) |
+| `onError` | `error` | A row-model request fails (`code: "row_model_error"`), or a menu or `api.paste()` paste cannot read the clipboard (`code: "clipboard_read_failed"`) |
 | `onRowGroupOpened` | `rowGroupOpened` | Row groups or tree nodes expand or collapse: one call per gesture or API call, after the rebuild, with the changed `groupIds`, the new `expanded` state and `source` |
 | `onColumnGroupOpened` | `columnGroupOpened` | Column groups open or close (header expander, `setColumnGroupState`): one call per direction, with `source` |
 | `onFirstDataRendered` | `firstDataRendered` | Once per grid, after the first paint that shows a row (later for a grid created empty) |

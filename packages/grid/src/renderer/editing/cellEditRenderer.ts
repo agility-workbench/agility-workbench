@@ -26,9 +26,12 @@ interface CellEditRendererParams {
   repaintCell: (rowId: string, colId: string) => void;
   // Grid API reference passed to editors.
   api: () => any;
+  // Screen-reader announcement (the grid's polite live region); the invalid-edit message uses it.
+  announce?: (message: string) => void;
 }
 
 const EDITING_CELL_CLASS = "pte-cell-editing";
+const INVALID_CELL_CLASS = "pte-cell-invalid";
 
 /**
  * Owns the inline cell editor DOM. Holds NO editing state — the core owns which cell is editing;
@@ -36,6 +39,14 @@ const EDITING_CELL_CLASS = "pte-cell-editing";
  * GUI over the cell, and translating the editor's keys (Enter/Tab/Escape) and blur into
  * editCommit / editCancel actions. The committed value comes from `editor.getValue()`, and
  * `editor.isParsed()` decides whether the column's valueParser is skipped.
+ *
+ * Invalid edits (#48): a commit the editor refuses (`getValidationMessage`), or the core refuses
+ * (the column's parser or `onBeforeCellCommit`, reported as `editingChanged {state: "rejected"}`
+ * while the core still holds the cell as editing), keeps the editor mounted with its text. The
+ * cell gets `pte-cell-invalid` and `aria-invalid="true"` (on the cell and the editor's GUI), the
+ * message becomes the GUI's `title` and is announced. Escape cancels; the next Enter/Tab/blur
+ * retries. A refused blur commit takes focus back into the editor when focus moved elsewhere in
+ * the grid (or nowhere), so the user is not left with an invisible open editor.
  */
 export class CellEditRenderer {
   private editor: ICellEditor | null = null;
@@ -46,6 +57,9 @@ export class CellEditRenderer {
   private multiline = false;
   // Guards against the teardown-triggered blur re-dispatching a commit/cancel.
   private tearingDown = false;
+  // The open editor's last commit was refused; the GUI's title before we overwrote it.
+  private invalid = false;
+  private guiTitle: string | null = null;
 
   constructor(private params: CellEditRendererParams) { }
 
@@ -69,8 +83,30 @@ export class CellEditRenderer {
       if (params.cell) this.mount(params.cell, params.charPress ?? null);
       return;
     }
-    // committed / cancelled / stopped — tear the editor down.
+    // A refused commit of the open editor: the core kept the cell editing, so keep the editor
+    // (with its text) and mark it invalid.
+    if (params.state === "rejected" && this.isOpenEditorCell(params.cell)
+      && this.isOpenEditorCell(this.params.core.getEditingCell() ?? undefined)) {
+      this.markInvalid(params.message);
+      return;
+    }
+    // committed / cancelled / stopped / rejected (editor closing) — tear the editor down.
     this.teardown();
+  }
+
+  /**
+   * Commit the open editor's value as Enter would (`api.stopEditing()`), without moving the active
+   * cell. No-op when no editor is open.
+   */
+  commitEditor(): void {
+    this.commit();
+  }
+
+  private isOpenEditorCell(cell: CellRef | undefined): boolean {
+    const open = this.editingCell;
+    if (!open || !cell) return false;
+    return cell.rowId === open.rowId
+      && (cell.colInstanceId ?? cell.colId) === (open.colInstanceId ?? open.colId);
   }
 
   /** Release an editor that is still open when the renderer itself is torn down. */
@@ -154,6 +190,7 @@ export class CellEditRenderer {
       this.gui.removeEventListener("mousedown", stopPropagation);
       this.gui.removeEventListener("dblclick", stopPropagation);
     }
+    this.clearInvalid();
     this.cellEl?.classList.remove(EDITING_CELL_CLASS);
 
     // If the editor still holds focus (keyboard commit/cancel), hand focus back to the grid root so
@@ -186,9 +223,9 @@ export class CellEditRenderer {
       // In a textarea, plain Enter inserts a newline; Ctrl/Cmd+Enter commits.
       if (this.multiline && !hasMod(e)) return;
       e.preventDefault();
-      this.commit();
-      // moveAfterEdit: advance to the next row after committing (Shift+Enter goes up).
-      this.moveAfterCommit(e.shiftKey ? "up" : "down");
+      // moveAfterEdit: advance to the next row after committing (Shift+Enter goes up). A refused
+      // commit keeps the editor open and the active cell where it is.
+      if (this.commit()) this.moveAfterCommit(e.shiftKey ? "up" : "down");
       return;
     }
 
@@ -196,9 +233,8 @@ export class CellEditRenderer {
     // browser's tab switch instead of committing the edit and moving the cursor.
     if (matchesChord(e, { key: "tab", shift: "any" })) {
       e.preventDefault();
-      this.commit();
       // Tab advances horizontally after committing (Shift+Tab goes left).
-      this.moveAfterCommit(e.shiftKey ? "left" : "right");
+      if (this.commit()) this.moveAfterCommit(e.shiftKey ? "left" : "right");
       return;
     }
 
@@ -209,12 +245,24 @@ export class CellEditRenderer {
     }
   };
 
-  private onEditorBlur = () => {
+  private onEditorBlur = (e: FocusEvent) => {
     // Ignore the blur we cause ourselves while tearing down.
     if (this.tearingDown) return;
+    // Focus moving between elements of the editor's own GUI is not leaving the editor.
+    const next = e.relatedTarget as Node | null;
+    if (next && this.gui?.contains(next)) return;
     // Committing on blur is opt-out; when disabled, focus loss leaves the editor open.
     if (!this.params.core.options.commitOnBlur) return;
-    this.commit();
+    if (this.commit()) return;
+    // Refused: the editor stays open and invalid. Take focus back when it went elsewhere in the
+    // grid (or nowhere); focus that left the grid for another control stays where the user put it.
+    const editor = this.editor;
+    if (!editor || (next && !this.params.root.contains(next))) return;
+    setTimeout(() => {
+      if (this.editor !== editor || !this.gui) return;
+      if (editor.focus) editor.focus();
+      else this.gui.focus();
+    }, 0);
   };
 
   // After an Enter/Tab commit, move the active cell one step so editing flows like a spreadsheet.
@@ -224,12 +272,54 @@ export class CellEditRenderer {
     this.params.core.dispatch({ type: "navigate", dir });
   }
 
-  private commit() {
-    if (!this.editingCell || !this.editor) return;
+  // Try to commit the open editor. Returns true when the editor closed (committed, or cancelled
+  // by isCancelAfterEnd), false when the commit was refused and the editor stays open, invalid.
+  private commit(): boolean {
+    if (!this.editingCell || !this.editor) return false;
+    const editor = this.editor;
+    if (editor.isCancelAfterEnd?.()) {
+      this.cancel();
+      return true;
+    }
+    const message = editor.getValidationMessage?.();
+    if (message) {
+      this.markInvalid(message);
+      return false;
+    }
     const cell = this.editingCell;
-    const value = this.editor.getValue();
-    const parsed = this.editor.isParsed?.() ?? false;
-    this.params.core.dispatch({ type: "editCommit", cell, value, parsed });
+    const value = editor.getValue();
+    const parsed = editor.isParsed?.() ?? false;
+    this.params.core.dispatch({ type: "editCommit", cell, value, parsed, fromEditor: true });
+    return this.editor !== editor;
+  }
+
+  // Mark the open editor's cell invalid: class + aria-invalid on the cell and the GUI, the message
+  // as the GUI's tooltip, and one announcement per refusal.
+  private markInvalid(message: string | undefined) {
+    const gui = this.gui;
+    const cellEl = this.cellEl;
+    if (!gui || !cellEl) return;
+    const text = message || this.params.core.getLocaleText("invalidCellValue");
+    if (!this.invalid) this.guiTitle = gui.getAttribute("title");
+    this.invalid = true;
+    cellEl.classList.add(INVALID_CELL_CLASS);
+    cellEl.setAttribute("aria-invalid", "true");
+    gui.setAttribute("aria-invalid", "true");
+    gui.setAttribute("title", text);
+    this.params.announce?.(text);
+  }
+
+  private clearInvalid() {
+    if (!this.invalid) return;
+    this.invalid = false;
+    this.cellEl?.classList.remove(INVALID_CELL_CLASS);
+    this.cellEl?.removeAttribute("aria-invalid");
+    if (this.gui) {
+      this.gui.removeAttribute("aria-invalid");
+      if (this.guiTitle == null) this.gui.removeAttribute("title");
+      else this.gui.setAttribute("title", this.guiTitle);
+    }
+    this.guiTitle = null;
   }
 
   private cancel() {

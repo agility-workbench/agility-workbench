@@ -275,6 +275,26 @@ console.log(api.getSelection());`,
   editable: true,
   cellEditor: "select",
   cellEditorParams: { values: ["On track", "At risk", "Blocked"] },
+}, {
+  key: "units",
+  label: "Units",
+  editable: true,
+  // A refused edit keeps the editor open, marked invalid, with this message.
+  valueParser: ({ value }) =>
+    /^\d+$/.test(value) ? Number(value) : reject("Units must be a whole number"),
+}, {
+  key: "owner",
+  label: "Owner",
+  editable: ({ data }) => data.status !== "Blocked",
+}, {
+  colId: "unitPrice",
+  label: "Unit price",
+  editable: true,
+  valueGetter: (row) => row.data.revenue / row.data.units,
+  valueSetter: ({ data, newValue }) => {
+    data.revenue = newValue * data.units;
+    return true;
+  },
 }];
 
 <Grid
@@ -289,6 +309,26 @@ console.log(api.getSelection());`,
   editable: true,
   cellEditor: "select",
   cellEditorParams: { values: ["On track", "At risk", "Blocked"] },
+}, {
+  key: "units",
+  label: "Units",
+  editable: true,
+  // A refused edit keeps the editor open, marked invalid, with this message.
+  valueParser: ({ value }) =>
+    /^\d+$/.test(value) ? Number(value) : reject("Units must be a whole number"),
+}, {
+  key: "owner",
+  label: "Owner",
+  editable: ({ data }) => data.status !== "Blocked",
+}, {
+  colId: "unitPrice",
+  label: "Unit price",
+  editable: true,
+  valueGetter: (row) => row.data.revenue / row.data.units,
+  valueSetter: ({ data, newValue }) => {
+    data.revenue = newValue * data.units;
+    return true;
+  },
 }];
 
 <awb-grid
@@ -304,11 +344,27 @@ console.log(api.getSelection());`,
     editable: true,
     cellEditor: "select",
     cellEditorParams: { values: ["On track", "At risk", "Blocked"] },
+  }, {
+    key: "units",
+    label: "Units",
+    editable: true,
+    valueParser: ({ value }) =>
+      /^\d+$/.test(value) ? Number(value) : reject("Units must be a whole number"),
+  }, {
+    colId: "unitPrice",
+    label: "Unit price",
+    editable: ({ data }) => data.status !== "Blocked",
+    valueGetter: (row) => row.data.revenue / row.data.units,
+    valueSetter: ({ data, newValue }) => {
+      data.revenue = newValue * data.units;
+      return true;
+    },
   }],
   {{options}}
 });
 
-api.startEditingCell({ rowId: "order-1", colId: "status" });`,
+api.startEditingCell({ rowId: "order-1", colId: "status" });
+api.stopEditing(); // commits the editor's value, as Enter does`,
   },
   grouping: {
     react: String.raw`<Grid

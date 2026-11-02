@@ -9,6 +9,7 @@ import { InternalGridOptions } from "../interfaces/gridOptions";
 import { isNullOrUndefined } from "../misc";
 import { resolveLocaleText } from "../interfaces/locale";
 import { ColumnMove } from "./columnMove";
+import { isTreeAggregateCell } from "../core/groupCellValue";
 
 interface BaselineWidthDef {
   width: number;
@@ -1264,7 +1265,7 @@ export class ColumnModel implements IColumnModel {
   // per-group aggregate value for the column (not the column's raw value, which is absent on the
   // synthetic group node) so aggregate totals get room to fit.
   private cellValueForWidth(col: Column, row: IRowNode): any {
-    if (row.isGroup) return row.aggregateValues?.[col.instanceID];
+    if (row.isGroup || isTreeAggregateCell(col, row)) return row.aggregateValues?.[col.instanceID];
     return col.getValue(row);
   }
 

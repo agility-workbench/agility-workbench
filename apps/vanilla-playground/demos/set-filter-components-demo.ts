@@ -12,7 +12,7 @@ import {
   type SetFilterValueComponentParams,
 } from "@grid";
 
-import { btn, code, demoRoot, gridHost, h, toolbarRow } from "../dom";
+import { btn, checkbox, code, demoRoot, gridHost, field, h, toolbarRow } from "../dom";
 
 type Region = { code: string; name: string };
 
@@ -280,13 +280,17 @@ export function mountSetFilterComponentsDemo(container: HTMLElement): () => void
         + "Stage lists its filter values as a static array, in the order to show them. "
         + "The Account and ARR filters take up to three conditions joined with AND or OR: open either"
         + " popover to add a condition and flip the join, or apply the same models through ",
-        code("api.setFilterModel"), " with the buttons below."),
+        code("api.setFilterModel"), " with the buttons below. Floating filters adds a row of filter"
+        + " controls under the headers (", code("floatingFilter"), "): type in Account or ARR, pick"
+        + " from the set-filter summaries, and watch a two-condition preset turn the input into"
+        + " read-only text."),
     ),
     toolbarRow(
       btn('Account starts with W OR contains "Indust"', () => applyPreset("accountOr")),
       btn("ARR below 20k OR above 80k", () => applyPreset("arrOr")),
       btn("ARR 10k–90k AND not 40k–60k", () => applyPreset("arrAnd")),
       btn("Clear filters", () => applyPreset("none")),
+      field("Floating filters", checkbox(true, on => api.updateGridOptions({ floatingFilter: on }))),
     ),
     host,
   ));
@@ -295,6 +299,7 @@ export function mountSetFilterComponentsDemo(container: HTMLElement): () => void
     rowData: ROWS,
     columnDefs: COLUMNS,
     rowIdKey: "id",
+    floatingFilter: true,
   });
 
   function applyPreset(preset: FilterPreset): void {

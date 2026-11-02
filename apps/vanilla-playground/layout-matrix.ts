@@ -68,6 +68,8 @@ export interface LayoutMatrixConfig {
   editing?: boolean;
   /** `columnVirtualization` (creation-only); false renders every centre cell, the benchmark baseline. */
   columnVirtualization?: boolean;
+  /** `floatingFilter: true`: the floating filter row under the header levels. */
+  floatingFilter?: boolean;
 }
 
 export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
@@ -90,6 +92,7 @@ export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
   rtl: false,
   editing: false,
   columnVirtualization: true,
+  floatingFilter: false,
 };
 
 export interface InvariantViolation {
@@ -122,6 +125,8 @@ export interface LayoutMatrixHarness {
   setGroupOpen(colId: string, open: boolean): Promise<void>;
   setTheme(name: NonNullable<LayoutMatrixConfig["theme"]>): Promise<void>;
   setHeaderHeight(px: number | undefined): Promise<void>;
+  /** `updateGridOptions({ floatingFilter })` on the mounted grid (the live toggle). */
+  setFloatingFilter(on: boolean): Promise<void>;
   api(): IGridAPI | null;
   config(): Required<LayoutMatrixConfig> | null;
 }
@@ -293,6 +298,7 @@ function buildOptions(config: Required<LayoutMatrixConfig>, rows: Row[]): Create
     pagination: config.pagination,
   };
   if (config.rtl) options.enableRtl = true;
+  if (config.floatingFilter) options.floatingFilter = true;
   if (config.headerHeight > 0) options.headerHeight = config.headerHeight;
   if (config.rowHeight > 0) options.rowHeight = config.rowHeight;
   if (config.headerWrap) options.defaultColDef = { wrapHeaderText: true, autoHeaderHeight: true };
@@ -450,9 +456,14 @@ async function setHeaderHeight(px: number | undefined): Promise<void> {
   await settle();
 }
 
+async function setFloatingFilter(on: boolean): Promise<void> {
+  api?.updateGridOptions({ floatingFilter: on });
+  await settle();
+}
+
 const harness: LayoutMatrixHarness = {
   mount, destroy, settle, setHostSize, reveal, check, scrollCenter, scrollBody,
-  pin, hide, setGroupOpen, setTheme, setHeaderHeight,
+  pin, hide, setGroupOpen, setTheme, setHeaderHeight, setFloatingFilter,
   api: () => api,
   config: () => current,
 };
@@ -512,6 +523,7 @@ const FIELDS: FieldSpec[] = [
   { key: "rtl", label: "Right-to-left", kind: "bool" },
   { key: "editing", label: "Editable", kind: "bool" },
   { key: "columnVirtualization", label: "Column virtualization", kind: "bool" },
+  { key: "floatingFilter", label: "Floating filters", kind: "bool" },
 ];
 
 const style = document.createElement("style");

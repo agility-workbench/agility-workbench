@@ -113,6 +113,17 @@ const SEQUENCES = {
     await record("headerHeight-reset@520");
     await size(MID_WIDTH, BASE_HEIGHT);
   },
+  // The floating filter row switched live while the columns sit scrolled: the header grows and
+  // shrinks by the row, and a row shown mid-scroll starts at the header's scroll offset.
+  async floatingToggle({ call, record }) {
+    await call("scrollCenter", "max");
+    await call("setFloatingFilter", false);
+    await record("floating-off-scrolled@1000");
+    await call("setFloatingFilter", true);
+    await record("floating-on-scrolled@1000");
+    await call("scrollCenter", 0);
+    await record("floating-on-scroll0@1000");
+  },
   // Create the grid inside a display:none frame, then show it — a tabbed host does exactly this.
   async hiddenMount({ page, record, size, config }) {
     await page.evaluate(`window.__layoutMatrix.mount(${JSON.stringify(config)}, { hidden: true })`);

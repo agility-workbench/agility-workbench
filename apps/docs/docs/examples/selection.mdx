@@ -41,6 +41,11 @@ keyboard, clipboard, export, and API workflows.
 Arrow keys navigate one cell. Home/End, Page Up/Down, Ctrl/Cmd+Arrow block
 jumps, and Ctrl/Cmd+Home/End corner jumps keep the active cell visible.
 Ctrl/Cmd+A selects the full unified row sequence.
+Ctrl/Cmd+C copies the selection (a range, selected rows or selected columns)
+and Ctrl/Cmd+V pastes into it from the browser's `paste` event, without asking
+for clipboard permission. The **Copy with headers** knob above sets
+`clipboard: { copyHeaders: true }`; the delimiter and the per-cell transforms are
+in [Editing → Clipboard options](./editing.mdx#clipboard-options).
 
 On the header cursor, `Space` selects the column, `Ctrl/Cmd+Space` adds one to
 the selection, and `Shift+Arrow` (or `Shift+Home`/`Shift+End`) extends the

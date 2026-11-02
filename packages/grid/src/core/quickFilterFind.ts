@@ -4,6 +4,7 @@ import { QuickFilterFindMatch } from "../interfaces/find";
 import { QuickFilterMatchMode } from "../interfaces/gridOptions";
 import { IRowModel } from "../interfaces/iRowModel";
 import { IRowNode } from "../interfaces/iRowNode";
+import { isTreeAggregateCell } from "./groupCellValue";
 
 export interface QuickFilterFindDeps {
   getRowModel: () => IRowModel;
@@ -194,7 +195,14 @@ export class QuickFilterFind {
   }
 
   private cellMatches(node: IRowNode, col: Column): boolean {
-    const formatted = col.formatValue(col.getValue(node), node);
+    // A tree parent's aggregated cell shows (and so is found by) its aggregate, not its own value.
+    let formatted: string;
+    if (isTreeAggregateCell(col, node)) {
+      const agg = node.aggregateValues![col.instanceID];
+      formatted = agg == null || agg === "" ? "" : col.formatValue(agg, node);
+    } else {
+      formatted = col.formatValue(col.getValue(node), node);
+    }
     if (!formatted) return false;
     return cellTextMatches(this.fold(formatted), this.needle!, this.matchMode, this.terms);
   }
