@@ -70,6 +70,8 @@ export interface LayoutMatrixConfig {
   columnVirtualization?: boolean;
   /** `floatingFilter: true`: the floating filter row under the header levels. */
   floatingFilter?: boolean;
+  /** `getRowHeight`: every fifth data row 72px, group rows 56px, pinned rows 52px, the rest `rowHeight`. */
+  variableRows?: boolean;
 }
 
 export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
@@ -93,6 +95,7 @@ export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
   editing: false,
   columnVirtualization: true,
   floatingFilter: false,
+  variableRows: false,
 };
 
 export interface InvariantViolation {
@@ -280,6 +283,15 @@ function buildColumnDefs(config: Required<LayoutMatrixConfig>): ColDef[] {
 
 /* ---------------------------------------------------------------- options ------------------- */
 
+/** `variableRows`: three heights besides the default, so every section, band and the sticky stack
+ * has rows that differ from their neighbours. */
+const variableRowHeight: NonNullable<CreateGridOptions["getRowHeight"]> = ({ node, data }) => {
+  if (node.rowPinned) return 52;
+  if (node.isGroup) return 56;
+  const n = Number(String((data as Row | undefined)?.id ?? "").slice(1));
+  return n % 5 === 0 ? 72 : undefined;
+};
+
 function themeFor(name: NonNullable<LayoutMatrixConfig["theme"]>): GridTheme {
   if (name === "dark") return themeDark;
   if (name === "custom") {
@@ -301,6 +313,7 @@ function buildOptions(config: Required<LayoutMatrixConfig>, rows: Row[]): Create
   if (config.floatingFilter) options.floatingFilter = true;
   if (config.headerHeight > 0) options.headerHeight = config.headerHeight;
   if (config.rowHeight > 0) options.rowHeight = config.rowHeight;
+  if (config.variableRows) options.getRowHeight = variableRowHeight;
   if (config.headerWrap) options.defaultColDef = { wrapHeaderText: true, autoHeaderHeight: true };
   if (!config.columnVirtualization) options.columnVirtualization = false;
   if (config.editing) options.defaultColDef = { ...options.defaultColDef, editable: true };
@@ -403,7 +416,47 @@ async function reveal(): Promise<void> {
 
 function check(): InvariantReport | null {
   const root = gridRoot();
-  return root ? window.__layoutInvariants.check(root) : null;
+  if (!root) return null;
+  const report = window.__layoutInvariants.check(root);
+  if (current?.variableRows) report.violations.push(...checkRowOffsets(root, current));
+  return report;
+}
+
+/**
+ * `variableRows` only: every rendered body row sits at the sum of the heights above it and is its own
+ * height tall. The generic invariants see rows that abut and fragments that agree, which a window
+ * translated to the wrong top still satisfies; this needs the heights, which only the harness knows.
+ */
+function checkRowOffsets(root: HTMLElement, config: Required<LayoutMatrixConfig>): InvariantViolation[] {
+  if (!api) return [];
+  const spacer = root.querySelector<HTMLElement>(".pte-spacer");
+  const viewport = root.querySelector<HTMLElement>(".pte-viewport");
+  if (!spacer || !viewport) return [];
+  const fallback = config.rowHeight > 0 ? config.rowHeight : config.theme === "custom" ? 36 : 43;
+  const count = api.getDisplayedRowCount();
+  const tops: number[] = [0];
+  for (let i = 0; i < count; i++) {
+    const node = api.getDisplayedRowAtIndex(i);
+    const height = node ? variableRowHeight({ node, data: node.data }) ?? fallback : fallback;
+    tops.push(tops[i] + height);
+  }
+  const origin = spacer.getBoundingClientRect().top;
+  for (const row of viewport.querySelectorAll<HTMLElement>(".pte-row[data-view-idx]")) {
+    if (row.style.display === "none") continue;
+    const idx = Number(row.dataset.viewIdx);
+    const rect = row.getBoundingClientRect();
+    const top = rect.top - origin;
+    const height = tops[idx + 1] - tops[idx];
+    if (Math.abs(top - tops[idx]) > 0.51 || Math.abs(rect.height - height) > 0.51) {
+      return [{
+        id: "row-offset",
+        severity: "error",
+        message: `body row ${idx} is not at the sum of the row heights above it`,
+        details: { expected: [tops[idx], height], actual: [Math.round(top * 100) / 100, Math.round(rect.height * 100) / 100] },
+      }];
+    }
+  }
+  return [];
 }
 
 async function scrollCenter(x: number | "max"): Promise<number> {
@@ -524,6 +577,7 @@ const FIELDS: FieldSpec[] = [
   { key: "editing", label: "Editable", kind: "bool" },
   { key: "columnVirtualization", label: "Column virtualization", kind: "bool" },
   { key: "floatingFilter", label: "Floating filters", kind: "bool" },
+  { key: "variableRows", label: "Variable row heights", kind: "bool" },
 ];
 
 const style = document.createElement("style");

@@ -21,6 +21,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "leafHeaderHeight", grid.leafHeaderHeight());
   setIfDefined(options, "parentHeaderHeight", grid.parentHeaderHeight());
   setIfDefined(options, "rowHeight", grid.rowHeight());
+  setIfDefined(options, "getRowHeight", grid.getRowHeight());
   setIfDefined(options, "pinnedTopRowData", grid.pinnedTopRowData());
   setIfDefined(options, "pinnedBottomRowData", grid.pinnedBottomRowData());
   setIfDefined(options, "getRowId", grid.getRowId());

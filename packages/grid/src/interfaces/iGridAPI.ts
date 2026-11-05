@@ -1138,6 +1138,13 @@ export interface IGridAPI<TData = any> {
    */
   redrawRows(params?: RedrawRowsParams): void;
   /**
+   * Ask `getRowHeight` again for every row and lay the body out from the new heights. The grid
+   * caches each row's height by row id and data object, so call this after changing something the
+   * heights depend on that is not the row's data object: a field mutated in place, a density
+   * setting, a column width that wraps text. No-op without `getRowHeight`.
+   */
+  resetRowHeights(): void;
+  /**
    * Briefly highlight rendered cells — the change-flash renderer's neutral flash, without a value
    * change (to draw the eye to rows a server push just touched, say). Cells that are not rendered
    * are skipped; flashing a cell again restarts its flash. No new CSS: the highlight is the

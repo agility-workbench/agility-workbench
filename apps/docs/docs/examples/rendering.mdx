@@ -32,6 +32,34 @@ Virtualization is automatic: the renderer maintains a small reusable row pool
 and slides it over the current viewport. Left, center, and right column
 sections stay synchronized without additional configuration.
 
+## Row heights per row
+
+```ts
+const options = {
+  rowHeight: 36,
+  getRowHeight: ({ node, data }) => {
+    if (node.isGroup) return 48;
+    return data.priority === "high" ? 64 : undefined; // undefined = rowHeight
+  },
+} satisfies GridOptions;
+```
+
+`getRowHeight` returns a height in px for one row, or `null`/`undefined` to
+keep `rowHeight`. It applies to data, group, footer and full-width rows, to
+pinned rows and to sticky group rows; the aggregate row under the body keeps
+`rowHeight`. The heights must be known up front: the grid does not measure
+row content, so wrapping cell text is not supported yet.
+
+The grid asks once per row and caches the answer by row id and data object.
+Replacing a row's data object (`setRowData`, a transaction update) asks again;
+changing it in place does not. After changing anything else a height depends
+on, call `api.resetRowHeights()`. `getRowHeight` can be swapped with
+`updateGridOptions`; in React, keep the function stable (`useCallback`), since
+a new function re-asks every row.
+
+On the server-side row model, rows that have not loaded take `rowHeight` and
+change height when their block arrives, which moves the rows below them.
+
 ## Function cell renderer
 
 ```ts
@@ -365,7 +393,8 @@ const options = {
 } satisfies GridOptions;
 ```
 
-Full-width rows are client-side and retain the standard row height.
+Full-width rows are client-side and take `rowHeight`, or their own height from
+`getRowHeight`.
 
 ## Conditional rows and visual states
 

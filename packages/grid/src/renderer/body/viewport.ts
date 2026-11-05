@@ -4,7 +4,6 @@ import { BodyWrapperElements, createBodyWrapper } from "./wrapper";
 interface BodyViewportRendererParams {
   core: GridCore;
   root: HTMLElement;
-  rowHeight: () => number;
   onVerticalScrollbarVisibilityChanged?: (visible: boolean) => void;
 }
 
@@ -21,7 +20,7 @@ export class BodyViewportRenderer {
   }
 
   recomputeView() {
-    const verticalSize = this.params.core.getRowModel().getViewCount() * this.params.rowHeight();
+    const verticalSize = this.params.core.rowHeights.totalHeight();
     const height = `${verticalSize}px`;
     // Written only on change: this runs on every root/body resize, and the resize path must write
     // nothing when its inputs are unchanged.

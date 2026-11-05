@@ -75,6 +75,17 @@ export const CASES = [
     config: { pinned: "both", floatingFilter: true },
     sequences: ["scrolled", "pinToggle", "hideToggle", "headerHeight", "window", "floatingToggle"],
   },
+  // getRowHeight: rows of three heights in every section, band and the sticky stack. row-flow and
+  // row-y catch a window translated to the wrong top or a fragment left at the default height.
+  {
+    name: "variable-rows-both",
+    config: { pinned: "both", rowNumbers: true, checkboxes: "left", variableRows: true },
+    sequences: ["scrolled", "bodyScroll", "pinToggle", "window"],
+  },
+  { name: "variable-rows-pinned-rows", config: { pinned: "left", pinnedRows: "both", variableRows: true }, sequences: ["scrolled", "bodyScroll"] },
+  { name: "variable-rows-sticky", config: { pinned: "both", grouping: "sticky", variableRows: true }, sequences: ["scrolled", "bodyScroll", "groupToggle"] },
+  { name: "variable-rows-full-width", config: { pinned: "both", fullWidth: true, variableRows: true }, sequences: ["scrolled", "bodyScroll"] },
+  { name: "variable-rows-rtl", config: { pinned: "both", variableRows: true, rtl: true }, sequences: ["scrolled", "bodyScroll"] },
   { name: "floating-filter-groups2", config: { columns: "groups2", pinned: "both", floatingFilter: true }, sequences: ["groupToggle", "scrolled"] },
   { name: "floating-filter-huge", config: { columns: "huge", pinned: "both", floatingFilter: true }, sequences: ["scrolled"] },
   {

@@ -59,6 +59,7 @@ import { ColumnChangeSource, GridEventColumnsChangedParams, GridEventFocusChange
 import { SparklineParams, SparklineRenderer } from "../cellRenderers/sparklineRenderer";
 import { getFormatterByType } from "../column/formatters";
 import { resolveThemeHeaderHeightPx, resolveThemeRowHeightPx } from "../theme/theme";
+import { RowHeightIndex } from "./rowHeights";
 import { createLocaleTextResolver, type GridLocaleKey, resolveLocaleText } from "../interfaces/locale";
 
 interface AppliedRowTransaction {
@@ -269,6 +270,15 @@ export class GridCore implements IGridCore {
   private displayedPinnedRows: Record<RowPinnedPosition, IRowNode[]> = { top: [], bottom: [] };
   private bodyPinnedRowIds = new Set<GridId>();
   private bodyPinnedViewIndices: number[] = [];
+  /** Body-row tops and heights in the rendered view's index space (`getRowHeight`). */
+  readonly rowHeights = new RowHeightIndex({
+    defaultHeight: () => this.options.rowHeight,
+    getRowHeight: () => this.options.getRowHeight,
+    viewCount: () => this.rowModel.getViewCount(),
+    nodeAt: (viewIndex) => this.rowModel.getRowNodeAtViewIndex(viewIndex),
+    isBodyPinned: (rowId) => this.bodyPinnedRowIds.has(rowId),
+    pinnedCountBefore: (viewIndex) => this.getBodyPinnedRowCountBefore(viewIndex),
+  });
   // Set while undo/redo is applying edits so the recording path doesn't re-record its own writes.
   private applyingHistory = false;
   // Active runInHistoryScope: "group" collects every step's edits into one entry pushed on exit,
@@ -342,6 +352,7 @@ export class GridCore implements IGridCore {
     });
     // Registered first, so the caches are dropped before any renderer handler repaints from them.
     this.on("rowsChanged", () => this.invalidateGroupSelectionCaches());
+    this.on("rowsChanged", () => this.rowHeights.invalidate());
     this.on("cellsChanged", () => this.invalidateGroupSelectionCaches());
     this.bindOptionCallbacks();
   }
@@ -567,6 +578,7 @@ export class GridCore implements IGridCore {
       grandTotalRow: resolveGroupTotalRowPosition(options.grandTotalRow),
       groupTotalRowLabel: options.groupTotalRowLabel,
       isRowSelectable: options.isRowSelectable,
+      getRowHeight: options.getRowHeight,
       isRowPinned: options.isRowPinned,
       groupRowsSticky: options.groupRowsSticky ?? false,
       isFullWidthRow: options.isFullWidthRow,
@@ -1410,6 +1422,16 @@ export class GridCore implements IGridCore {
       // the count is known, exactly as after a filter.
       if (this.rowModel.getType() !== "serverSide") this.clampPageToLastPage();
     } else if (applied.updatedRowIds.length > 0) {
+      // A replaced data object can change its row's height (`getRowHeight`): the rows stay put but
+      // everything below them moves, so the body is laid out again before the in-place repaint.
+      if (this.rowHeights.refreshNodes(applied.updatedRowIds.map(id => this.rowModel.getRowNode(id)))) {
+        this.emit("rowsChanged", {
+          reason: "refresh",
+          firstRowIndex: 0,
+          lastRowIndex: this.rowModel.getViewCount() - 1,
+          rowCount: this.rowModel.getViewCount(),
+        });
+      }
       // Repaint the updated rows in place (renderer refresh → change-flash) without moving them.
       const pair = this.eventColIds(this.columnModel.getLeaves().filter(c => !c.isInternal()));
       this.emit("cellsChanged", {
@@ -2309,6 +2331,23 @@ export class GridCore implements IGridCore {
     this.options.groupSelectsChildren = groupSelectsChildren;
     this.invalidateGroupSelectionCaches();
     this.pruneRemovedRowSelection();
+    this.emit("rowsChanged", {
+      reason: "refresh",
+      firstRowIndex: 0,
+      lastRowIndex: this.rowModel.getViewCount() - 1,
+      rowCount: this.rowModel.getViewCount(),
+    });
+  }
+
+  setGetRowHeight(getRowHeight: GridOptions["getRowHeight"]): void {
+    if (this.options.getRowHeight === getRowHeight) return;
+    this.options.getRowHeight = getRowHeight;
+    this.resetRowHeights();
+  }
+
+  /** Ask `getRowHeight` again for every row and lay the body out from the answers. */
+  resetRowHeights(): void {
+    this.rowHeights.resetHeights();
     this.emit("rowsChanged", {
       reason: "refresh",
       firstRowIndex: 0,
@@ -3507,6 +3546,7 @@ export class GridCore implements IGridCore {
       .map(rowId => this.rowModel.getRowNode(rowId)?.viewIndex ?? -1)
       .filter(viewIndex => viewIndex >= 0)
       .sort((left, right) => left - right);
+    this.rowHeights.invalidate();
 
     // Preserve the logical cell while its row crosses a section boundary. This is the row-axis
     // equivalent of retaining the active column while it moves between left/center/right.

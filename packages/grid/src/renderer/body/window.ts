@@ -17,7 +17,6 @@ import {
 
 interface BodyWindowRendererParams {
   core: GridCore;
-  rowHeight: () => number;
   rowPool: () => RowPoolDef[];
   body: HTMLDivElement;
   centerSpacer: HTMLDivElement;
@@ -132,7 +131,7 @@ export class BodyWindowRenderer {
     const rowPool = this.params.rowPool();
     const startIndex = Math.max(
       0,
-      Math.floor(scrollTop / this.params.core.options.rowHeight) - this.params.core.options.overscanRowCount
+      this.params.core.rowHeights.indexAt(scrollTop) - this.params.core.options.overscanRowCount
     );
     const endIndex = Math.min(total, startIndex + rowPool.length);
 
@@ -194,8 +193,7 @@ export class BodyWindowRenderer {
     // Application-pinned model rows are removed from the body's flow (sticky group ancestors are
     // not — they stay in the flow and are mirrored by the overlay). Account for every removed row
     // before the virtual window so the compacted offset holds as the pool advances.
-    const bodyRowsBefore = startIndex - this.params.core.getBodyPinnedRowCountBefore(startIndex);
-    const offsetY = bodyRowsBefore * this.params.rowHeight();
+    const offsetY = this.params.core.rowHeights.topOf(startIndex);
     this.params.leadingViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.leftViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.centerViewport.style.transform = `translateY(${offsetY}px)`;
@@ -243,6 +241,7 @@ export class BodyWindowRenderer {
 
       slot.rowEl.setAttribute("row-id", row.id);
       slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
+      this.setSlotHeight(slot, this.params.core.rowHeights.heightOfNode(row));
 
       if (slot.leadingRowEl) {
         slot.leadingRowEl.setAttribute("data-view-idx", String(viewIndex));
@@ -281,6 +280,15 @@ export class BodyWindowRenderer {
     }
     // Latched in the core: only the first paint that shows a row emits `firstDataRendered`.
     if (painted > 0) this.params.core.noteBodyRowsPainted(painted);
+  }
+
+  /** Size every fragment of a slot to its row's height (`getRowHeight`). Written only on change:
+   * with uniform rows every slot already has the height it was built with. */
+  private setSlotHeight(slot: RowPoolDef, height: number) {
+    const px = `${height}px`;
+    for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
+      if (el && el.style.height !== px) el.style.height = px;
+    }
   }
 
   /** Marks the pinned/leading fragments of a slot in full-width layout (a blank, themeable band). */
@@ -353,7 +361,7 @@ export class BodyWindowRenderer {
       // Their cells are hidden instead, so no pinned value bleeds through beside the host, and a
       // blank fragment is hidden from AT (the host already spans the whole ARIA column range). A
       // checkbox in the centre section stays under the host: only a pinned one can be kept.
-      const rowHeight = `${this.params.rowHeight()}px`;
+      const rowHeight = slot.rowEl.style.height;
       let checkboxKept = false;
       for (const [el, cells] of this.pinnedFragments(slot)) {
         el.classList.add(BodyWindowRenderer.FULL_WIDTH_FRAGMENT_CLASS);

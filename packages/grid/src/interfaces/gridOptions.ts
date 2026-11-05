@@ -262,6 +262,17 @@ export interface GroupChildCountParams<TData = any> extends GroupValueGetterPara
  */
 export type GroupChildCountGetter<TData = any> = (params: GroupChildCountParams<TData>) => number | string | null | undefined;
 
+/** What a `getRowHeight` function is handed for one row. */
+export interface RowHeightParams<TData = any> {
+  /** The row: a data row, a group or footer row, or an application-pinned row. */
+  node: import("./iRowNode").IRowNode<TData>;
+  /** The row's data; undefined on group and footer rows. */
+  data: TData | undefined;
+}
+
+/** Height in px of one row, or `null`/`undefined` for the grid's `rowHeight`. */
+export type GetRowHeight<TData = any> = (params: RowHeightParams<TData>) => number | null | undefined;
+
 /** Where a footer row sits: `"top"` under its group's header (or first in the list for the grand
  * total), `"bottom"` after the group's last row (or last in the list). */
 export type GroupTotalRowPosition = "top" | "bottom";
@@ -1199,10 +1210,23 @@ export interface GridOptions<TData = any> {
    * over it. Updatable at runtime.
    */
   parentHeaderHeight?: number;
-  /** Height of every body row in px. Fixed at creation. When omitted, a theme's `rowHeight`
-   * param (`themeLight.withParams({ rowHeight: 42 })`) applies; otherwise 43. An explicit value
-   * here always wins over the theme. */
+  /** Height of every body row in px, and the default for rows `getRowHeight` leaves alone. Fixed
+   * at creation. When omitted, a theme's `rowHeight` param (`themeLight.withParams({ rowHeight: 42 })`)
+   * applies; otherwise 43. An explicit value here always wins over the theme. */
   rowHeight?: number;
+  /**
+   * Height in px of one row, for grids whose rows are not all the same height. Return a positive
+   * number, or `null`/`undefined` (or anything that is not a positive finite number) for `rowHeight`.
+   * Applies to data, group, footer and full-width rows in the body, to pinned rows and to sticky group
+   * rows; the aggregate row under the body keeps `rowHeight`.
+   *
+   * The grid asks once per row and caches the answer by row id and data object: a row whose data
+   * object is replaced (`setRowData`, a transaction update) is asked again, one changed in place is
+   * not; call `api.resetRowHeights()` after changing what the heights depend on. On the server-side
+   * row model, rows that have not loaded yet take `rowHeight` and change height when they load.
+   * Updatable at runtime.
+   */
+  getRowHeight?: GetRowHeight<TData>;
   /**
    * Application-owned rows rendered in a frozen band immediately below the header. These rows are
    * outside sorting, filtering, grouping, pagination, selection, and the virtualized row count.
@@ -2386,6 +2410,7 @@ export const WIDGET_OPTION_KEYS = [
   "groupTotalRowLabel",
   "pivotColumnMoveMode",
   "isRowSelectable",
+  "getRowHeight",
   "serverSideDataSource",
   "serverSideAggregationSource",
 ] as const satisfies readonly (keyof GridOptions)[];
@@ -2398,7 +2423,7 @@ export const UPDATABLE_OPTION_KEYS = [
 ] as const;
 
 /** Runtime-slice options whose callbacks receive a row: typed from `GridOptions<TData>` instead. */
-type RowTypedRuntimeOptionKey = "getRowClass" | "getRowStyle" | "getRowPresentation" | "rowInsertionMenu";
+type RowTypedRuntimeOptionKey = "getRowClass" | "getRowStyle" | "getRowPresentation" | "rowInsertionMenu" | "getRowHeight";
 
 /**
  * The grid options a mounted grid can be reconfigured with, via `IGridAPI.updateGridOptions`.
@@ -2437,7 +2462,7 @@ export const MODEL_STATE_OPTION_KEYS = [
  * them = creation-only).
  */
 const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true } = {
-  headerHeight: true, leafHeaderHeight: true, parentHeaderHeight: true, rowHeight: true,
+  headerHeight: true, leafHeaderHeight: true, parentHeaderHeight: true, rowHeight: true, getRowHeight: true,
   pinnedTopRowData: true, pinnedBottomRowData: true, getRowId: true, rowIdKey: true,
   rowDataMode: true, asyncTransactionWaitMs: true, overscanRowCount: true, minResizeWidth: true,
   columnVirtualization: true, overscanColumnCount: true, enableRtl: true,

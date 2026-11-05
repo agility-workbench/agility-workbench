@@ -333,6 +333,8 @@ export class GridRenderer {
       recomputeView: () => {
         this._bodyViewportRenderer.recomputeView();
         this.core.clampSelectionToView();
+        // A new view can hold shorter rows than the pool was sized for.
+        if (this._poolSize > 0 && !this.core.rowHeights.isUniform()) this._maybeUpdatePoolSize();
       },
       updateWindow: (forcePatch, scrollSrc) => this._bodyWindowRenderer.update(forcePatch, scrollSrc),
       resetScrollPosition: () => this._bodyViewportRenderer.resetScrollPosition(),
@@ -391,8 +393,12 @@ export class GridRenderer {
       ensureCellVisible: (viewIdx, colIdx, rowPinned) =>
         this._ensureCellVisible(viewIdx, colIdx, rowPinned),
       viewportRows: () => {
-        const h = this._bodyViewportRenderer.getRefs().body.clientHeight;
-        return Math.max(1, Math.floor(h / this.rowHeight));
+        const body = this._bodyViewportRenderer.getRefs().body;
+        const h = body.clientHeight;
+        const heights = this.core.rowHeights;
+        if (heights.isUniform()) return Math.max(1, Math.floor(h / this.rowHeight));
+        // Variable heights: a page is the rows the viewport shows now.
+        return Math.max(1, heights.indexAt(body.scrollTop + h) - heights.indexAt(body.scrollTop));
       },
     });
     this._cellEditRenderer = new CellEditRenderer({
@@ -532,7 +538,6 @@ export class GridRenderer {
     this._bodyViewportRenderer = new BodyViewportRenderer({
       core: this.core,
       root: this.root,
-      rowHeight: () => this.rowHeight,
       onVerticalScrollbarVisibilityChanged: (visible) => {
         this._columnLayoutRenderer?.setVerticalScrollbarVisible(visible);
         this._pinnedRowsRenderer?.setBodyVerticalScrollbarVisible(visible);
@@ -936,7 +941,6 @@ export class GridRenderer {
     });
     this._bodyWindowRenderer = new BodyWindowRenderer({
       core: this.core,
-      rowHeight: () => this.rowHeight,
       rowPool: () => this._rowPool,
       body: bodyWrapper.body,
       centerSpacer: bodyWrapper.centerSpacer,
@@ -1143,7 +1147,10 @@ export class GridRenderer {
     const rowHeightPx = params?.rowHeightPx ?? this.core.getOptions().rowHeight ?? this.rowHeight;
     const overscanRowCount = params?.overscanRowCount ?? this.core.getOptions().overscanRowCount ?? 0;
     this.rowHeight = rowHeightPx;
-    const poolSize = this._bodyPoolSizer.computePoolSize(rowHeightPx, overscanRowCount);
+    // The pool must hold every row one viewport can show, so with `getRowHeight` it is sized for
+    // the shortest row in the view.
+    const poolRowHeight = this.core.rowHeights.isUniform() ? rowHeightPx : this.core.rowHeights.minHeight();
+    const poolSize = this._bodyPoolSizer.computePoolSize(poolRowHeight, overscanRowCount);
     if (poolSize === this._poolSize) return;
     this._poolSize = poolSize;
     this._rebuildRowPool();
@@ -1681,10 +1688,10 @@ export class GridRenderer {
     }
 
     // Body positions are compacted for application-pinned model rows, exactly as in ensureRowVisible.
-    const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
+    const rowTop = this.core.rowHeights.topOf(viewIdx);
     return {
       targetStart: rowTop - refs.body.scrollTop,
-      targetSize: this.rowHeight,
+      targetSize: this._bodyRowHeight(viewIdx),
       viewportSize: refs.body.clientHeight,
       occluderStart,
       occluderEnd,
@@ -2188,7 +2195,8 @@ export class GridRenderer {
     // Body positions are compacted for application-pinned model rows, and the effective viewport top
     // is inset by the sticky ancestor chain that will dock above the row — otherwise the row would
     // technically be in view but sitting hidden underneath the overlay.
-    const rowTop = (viewIdx - this.core.getBodyPinnedRowCountBefore(viewIdx)) * this.rowHeight;
+    const rowTop = this.core.rowHeights.topOf(viewIdx);
+    const rowHeight = this._bodyRowHeight(viewIdx);
     const clearance = this._pinnedRowsRenderer.stickyClearance(viewIdx);
     const viewH = refs.body.clientHeight;
     const st = refs.body.scrollTop;
@@ -2199,8 +2207,8 @@ export class GridRenderer {
       if (this._pinnedRowsRenderer.isDockedUnderPointer(viewIdx)) return;
       if (rowTop - clearance < st) {
         refs.body.scrollTop = Math.max(0, rowTop - clearance);
-      } else if (rowTop + this.rowHeight > st + viewH) {
-        refs.body.scrollTop = rowTop + this.rowHeight - viewH;
+      } else if (rowTop + rowHeight > st + viewH) {
+        refs.body.scrollTop = rowTop + rowHeight - viewH;
       }
       return;
     }
@@ -2208,8 +2216,8 @@ export class GridRenderer {
     const desired = position === "top"
       ? rowTop
       : position === "bottom"
-        ? rowTop + this.rowHeight - viewH
-        : rowTop - (viewH - this.rowHeight) / 2;
+        ? rowTop + rowHeight - viewH
+        : rowTop - (viewH - rowHeight) / 2;
     // `rowTop - clearance` is the largest scrollTop that still keeps the row clear of the sticky
     // overlay, so it caps every placement — in a viewport too short to honor the request, docking
     // just below the overlay beats sliding the row underneath it. The browser clamps the far end.
@@ -2369,6 +2377,11 @@ export class GridRenderer {
     else this.root.removeAttribute("aria-labelledby");
     if (ariaLabel && !labelledBy) this.root.setAttribute("aria-label", ariaLabel);
     else this.root.removeAttribute("aria-label");
+  }
+
+  /** A body row's height for scrolling; a row that holds no body place (pinned) counts as one row. */
+  private _bodyRowHeight(viewIdx: number): number {
+    return this.core.rowHeights.heightAt(viewIdx) || this.rowHeight;
   }
 
   _rebuildRowPool() {

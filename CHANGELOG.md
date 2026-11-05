@@ -3,6 +3,33 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Features
+
+- **Rows can have their own heights with `getRowHeight`.** `getRowHeight({ node, data })` returns a
+  row's height in px, or `null`/`undefined` for `rowHeight`. It sizes data, group, footer and
+  full-width rows in the body, application-pinned rows and their band, and sticky group rows (the
+  push-out follows each header's height); the aggregate row keeps `rowHeight`. Scrolling,
+  `ensureRowVisible`/`ensureCellVisible`, Page Up/Down and the row window all work from the rows'
+  running offsets, and the row pool is sized for the shortest row. Heights are cached per row id
+  and data object: a replaced data object (`setRowData`, a transaction update) is asked again, and
+  the new `api.resetRowHeights()` re-asks every row. `getRowHeight` is updatable through
+  `updateGridOptions` and is a live prop/input in both wrappers. Grids without it lay out exactly as
+  before. `RowHeightParams` and `GetRowHeight` are exported.
+
+### Fixes
+
+- **The body no longer ends in blank space for application-pinned model rows.** Rows pinned out of
+  the body (`api.setRowPinned`, `isRowPinned`) still counted towards the body's scroll height, so the
+  body could scroll one blank row past its end per pinned row.
+
+### Tooling
+
+- **Layout probe:** a `row-flow` invariant (consecutive body rows abut), a `variableRows` harness flag
+  with a `row-offset` check (each rendered row sits at the sum of the heights above it), and five
+  `variable-rows-*` cases (pinned columns, pinned rows, sticky groups, full-width rows, RTL).
+
 ## 1.15.0 — 2026-11-02
 
 ### Features

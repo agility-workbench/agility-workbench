@@ -44,6 +44,7 @@ interface RenderedPinnedRow {
 interface StickyStackRow {
   node: IRowNode;
   top: number;
+  height: number;
 }
 
 export interface PinnedRowsController {
@@ -116,8 +117,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   private bottomCount = 0;
   private bodyPartitionSignature = "";
   private bodyHasVerticalScrollbar = false;
-  /** Rows currently rendered in each application-pinned band, for re-laying its height on resize. */
-  private readonly bandRowCounts = new Map<BandElements, number>();
+  /** Heights of the rows currently rendered in each application-pinned band, for re-laying its
+   * height on resize. */
+  private readonly bandRowHeights = new Map<BandElements, number[]>();
   // Application-pinned rows only change through API/option/model events (which force-render), so
   // the O(rows) resolve is cached and scroll frames touch only the sticky overlay.
   private appRows: { top: RenderedPinnedRow[]; bottom: RenderedPinnedRow[] } | null = null;
@@ -367,7 +369,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     let heightChanged = false;
     for (const band of [this.top, this.bottom]) {
       // A band never rendered has no height to correct (and the body is not wired up yet).
-      if (!this.bandRowCounts.has(band)) continue;
+      if (!this.bandRowHeights.has(band)) continue;
       if (this.layoutBandHeight(band)) heightChanged = true;
     }
     if (heightChanged) this.params.onHeightChanged();
@@ -576,8 +578,10 @@ export class PinnedRowsRenderer implements PinnedRowsController {
 
   ensureCellVisible(position: RowPinnedPosition, rowIndex: number): void {
     const band = position === "top" ? this.top : this.bottom;
-    const rowTop = rowIndex * this.params.rowHeight();
-    const rowBottom = rowTop + this.params.rowHeight();
+    const heights = this.bandRowHeights.get(band) ?? [];
+    let rowTop = 0;
+    for (let i = 0; i < rowIndex && i < heights.length; i++) rowTop += heights[i];
+    const rowBottom = rowTop + (heights[rowIndex] ?? this.params.rowHeight());
     const viewportHeight = band.center.clientHeight;
     if (rowTop < band.center.scrollTop) {
       this.syncBandVertical(band, band.center, rowTop);
@@ -760,7 +764,6 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     if (!core.options.groupRowsSticky) return [];
     const model = core.getRowModel();
     const total = model.getViewCount();
-    const rowHeight = Math.max(1, this.params.rowHeight());
     if (total === 0) return [];
 
     const stack: StickyStackRow[] = [];
@@ -769,7 +772,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       // The deepest row starting at or above the current stack bottom resolves this depth's
       // anchor: its depth-`depth` hierarchy parent is the last such header, which is exactly the
       // sticky candidate (an arriving sibling becomes the anchor the moment it touches the edge).
-      const edgeIndex = this.lastRowTouching(scrollTop + bottom, total, rowHeight);
+      const edgeIndex = this.lastRowTouching(scrollTop + bottom, total);
       if (edgeIndex < 0) break;
       // A server-side edge slot may not be loaded yet; its ancestor chain is still resolvable
       // through the model's segment index (ancestors are always loaded before descendants).
@@ -782,15 +785,17 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       // header sat on an earlier page is negative here (above the page, so it docks).
       const anchorIndex = core.getPageViewIndex(anchor);
       if (anchorIndex == null) break;
-      const natural = this.compactTop(anchorIndex, rowHeight) - scrollTop;
+      const natural = this.compactTop(anchorIndex) - scrollTop;
       if (natural > bottom) break; // header still below the stack in the body — nothing deeper sticks
       const lastDescendant = this.lastDescendantIndex(anchor, anchorIndex, depth, total);
       if (lastDescendant <= anchorIndex) break; // collapsed/childless: scrolls away naturally
-      const blockEnd = this.compactTop(lastDescendant, rowHeight) + rowHeight - scrollTop;
-      const top = Math.min(bottom, blockEnd - rowHeight);
-      if (top + rowHeight <= 0) break;
-      stack.push({ node: anchor, top });
-      bottom = top + rowHeight;
+      // The block ends where the row after its last descendant starts.
+      const blockEnd = this.compactTop(lastDescendant + 1) - scrollTop;
+      const height = Math.max(1, this.params.core.rowHeights.heightOfNode(anchor));
+      const top = Math.min(bottom, blockEnd - height);
+      if (top + height <= 0) break;
+      stack.push({ node: anchor, top, height });
+      bottom = top + height;
     }
     return stack;
   }
@@ -809,28 +814,34 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     const node = model.getRowNodeAtViewIndex(viewIndex);
     if (!node) {
       // Unloaded server-side slot: every chain entry is an ancestor above it.
-      return this.ancestorChainAt(viewIndex).length * this.params.rowHeight();
+      return this.chainHeight(this.ancestorChainAt(viewIndex));
     }
     const chain = this.parentChainOf(node);
     const ancestors = chain.length > 0 && chain[chain.length - 1].id === node.id
-      ? chain.length - 1
-      : chain.length;
-    return ancestors * this.params.rowHeight();
+      ? chain.slice(0, -1)
+      : chain;
+    return this.chainHeight(ancestors);
+  }
+
+  private chainHeight(chain: IRowNode[]): number {
+    let height = 0;
+    for (const node of chain) height += this.params.core.rowHeights.heightOfNode(node);
+    return height;
   }
 
   /** Body-flow top (px, content space) of a view row, compacted for application-pinned rows. */
-  private compactTop(viewIndex: number, rowHeight: number): number {
-    return (viewIndex - this.params.core.getBodyPinnedRowCountBefore(viewIndex)) * rowHeight;
+  private compactTop(viewIndex: number): number {
+    return this.params.core.rowHeights.topOf(viewIndex);
   }
 
   /** Last view index whose compacted top is at or above `contentY`, or -1. Tops are monotone. */
-  private lastRowTouching(contentY: number, total: number, rowHeight: number): number {
+  private lastRowTouching(contentY: number, total: number): number {
     let low = 0;
     let high = total - 1;
     let result = -1;
     while (low <= high) {
       const middle = (low + high) >>> 1;
-      if (this.compactTop(middle, rowHeight) <= contentY) {
+      if (this.compactTop(middle) <= contentY) {
         result = middle;
         low = middle + 1;
       } else {
@@ -910,7 +921,6 @@ export class PinnedRowsRenderer implements PinnedRowsController {
    * frame (cheap transform/height writes — this is what animates the push-out). Returns whether
    * the chain itself changed. */
   private renderStickyOverlay(stack: StickyStackRow[], force: boolean): boolean {
-    const rowHeight = this.params.rowHeight();
     const signature = this.signature(stack.map(item => item.node));
     const changed = force || signature !== this.stickySignature;
     if (changed) {
@@ -928,7 +938,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
       return changed;
     }
     this.sticky.root.style.display = "flex";
-    const bottom = stack.reduce((max, item) => Math.max(max, item.top + rowHeight), 0);
+    const bottom = stack.reduce((max, item) => Math.max(max, item.top + item.height), 0);
     this.sticky.root.style.height = `${Math.max(0, bottom)}px`;
     const hosts = [
       this.sticky.leadingHost,
@@ -966,7 +976,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     band.centerHost.replaceChildren();
     band.rightHost.replaceChildren();
     band.root.style.display = rows.length > 0 ? "flex" : "none";
-    this.bandRowCounts.set(band, rows.length);
+    this.bandRowHeights.set(band, rows.map(({ node }) => this.params.core.rowHeights.heightOfNode(node)));
     this.layoutBandHeight(band);
 
     rows.forEach(({ node, position }, rowIndex) => {
@@ -983,9 +993,9 @@ export class PinnedRowsRenderer implements PinnedRowsController {
    * visible height changed.
    */
   private layoutBandHeight(band: BandElements): boolean {
-    const rowCount = this.bandRowCounts.get(band) ?? 0;
+    const heights = this.bandRowHeights.get(band) ?? [];
     const rowHeight = this.params.rowHeight();
-    const contentHeight = rowCount * rowHeight;
+    const contentHeight = heights.reduce((sum, height) => sum + height, 0);
     const gridHeight = this.params.root.clientHeight;
     // Keep enough central body visible even when an application pins many rows. Top and bottom
     // each get at most 30% of the grid and then scroll independently. While the root has no height
@@ -1143,7 +1153,7 @@ export class PinnedRowsRenderer implements PinnedRowsController {
   ): HTMLDivElement {
     const element = document.createElement("div");
     element.className = "pte-row pte-pinned-row";
-    element.style.height = `${this.params.rowHeight()}px`;
+    element.style.height = `${this.params.core.rowHeights.heightOfNode(row)}px`;
     element.setAttribute("row-id", row.id);
     element.dataset.rowId = row.id;
     if (pinned) {
