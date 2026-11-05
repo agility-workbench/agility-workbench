@@ -8,6 +8,7 @@ import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 import { resolveColSpan } from "./colSpan";
 import { ColumnWindow, computeColumnWindow, sameColumns } from "./columnWindow";
 import { scrollStart } from "../layout/direction";
+import { measureAutoHeightRow } from "./autoHeight";
 import type { RowPresentation } from "../../interfaces/gridOptions";
 import {
   mergeClassValues,
@@ -41,6 +42,9 @@ interface BodyWindowRendererParams {
   reconcileCenter: (slot: RowPoolDef, cols: number[]) => Array<{ cell: HTMLDivElement; index: number }>;
   /** Re-seat the fill handle after cells were rendered outside the selection paint. */
   restoreFillHandle: () => void;
+  /** Measured row heights (`autoHeight`) changed the body's content height: re-size the spacers
+   * and whatever mirrors body rows (the sticky overlay). */
+  onContentHeightChanged: () => void;
 }
 
 export class BodyWindowRenderer {
@@ -156,7 +160,62 @@ export class BodyWindowRenderer {
     this.params.setStartIndex(startIndex);
     this.translateViewports(startIndex);
     this.patchRows(startIndex, total, rowPool);
+    this.measureAutoHeights();
   }
+
+  /**
+   * `autoHeight`: measure the drawn rows and lay the body out from what they need. Every row is read
+   * before anything is written (one forced layout per pass). Rows that grew above the viewport would
+   * push what the user is looking at down, so the scroll offset moves with them: the row at the top
+   * of the viewport stays where it was. A changed layout can move the window to another start row,
+   * whose newly drawn rows are measured in the next pass; a few passes settle any scroll position.
+   *
+   * Runs after every window patch, and from the renderer after cell repaints, width changes, theme
+   * and font changes. A no-op without an `autoHeight` column.
+   */
+  measureAutoHeights(): void {
+    const core = this.params.core;
+    const heights = core.rowHeights;
+    if (!heights.measuresContent()) return;
+    const model = core.getRowModel();
+    for (let pass = 0; pass < 4 && this.lastStartIndex != null; pass++) {
+      const start = this.lastStartIndex;
+      const rowPool = this.params.rowPool();
+      const readings: Array<{ node: IRowNode; viewIndex: number; required: number; slot: RowPoolDef }> = [];
+      for (let i = 0; i < rowPool.length; i++) {
+        const slot = rowPool[i];
+        if (slot.rowEl.style.display === "none" || slot.rowEl.classList.contains("pte-full-width-row")) continue;
+        const viewIndex = start + i;
+        const node = model.getRowNodeAtViewIndex(viewIndex);
+        if (!node || core.isBodyRowPinned(node.id)) continue;
+        const required = measureAutoHeightRow([slot.leadingRowEl, slot.leftRowEl, slot.rowEl, slot.rightRowEl]);
+        if (required != null) readings.push({ node, viewIndex, required, slot });
+      }
+      const body = this.params.body;
+      const scrollTop = body.scrollTop;
+      const anchor = heights.indexAt(scrollTop);
+      const anchorTop = heights.topOf(anchor);
+      let changed = false;
+      for (const reading of readings) {
+        if (heights.setMeasured(reading.node, reading.required, reading.viewIndex)) changed = true;
+      }
+      if (!changed) return;
+      for (const reading of readings) this.setSlotHeight(reading.slot, heights.heightOfNode(reading.node));
+      this.params.onContentHeightChanged();
+      const shift = heights.topOf(anchor) - anchorTop;
+      if (shift !== 0 && scrollTop > 0) body.scrollTop = scrollTop + shift;
+      const next = Math.max(0, heights.indexAt(body.scrollTop) - core.options.overscanRowCount);
+      if (next === start) {
+        this.translateViewports(start);
+        return;
+      }
+      this.lastStartIndex = next;
+      this.params.setStartIndex(next);
+      this.translateViewports(next);
+      this.patchRows(next, model.getViewCount(), rowPool);
+    }
+  }
+
 
   private requestMissingServerSideRows(startIndex: number, endIndex: number, total: number) {
     const rowModel = this.params.core.getRowModel();

@@ -10,9 +10,10 @@ evaluated before adoption.
 
 ## Not currently implemented
 
-- Automatic row heights and cell text wrapping: rows can have their own heights
-  (`getRowHeight`), but the grid does not measure row content (header labels can
-  wrap and grow the header: `wrapHeaderText` / `autoHeaderHeight`)
+- Auto row height for full-width rows, and noticing cell content that resizes on
+  its own (an image loading: call `api.resetRowHeights()`). `autoHeight` rows are
+  measured as they are drawn, so the scroll height is an estimate until every
+  row has been on screen
 - Sticky column-group labels: a wide group's label scrolls out of view with the
   group's left edge rather than staying visible while the group is on screen
 - Master/detail row panels

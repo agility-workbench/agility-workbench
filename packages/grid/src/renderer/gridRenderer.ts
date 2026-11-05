@@ -283,8 +283,11 @@ export class GridRenderer {
         this._modelChangeHandler.onColumnWidthsChanged(params);
         this._pinnedRowsRenderer?.render(undefined, true);
         // A settled width can re-wrap an autoHeaderHeight label (drag frames are left to the
-        // header's own ResizeObserver).
-        if (params.final) this._headerRenderer.remeasureAutoHeight();
+        // header's own ResizeObserver) and an autoHeight cell.
+        if (params.final) {
+          this._headerRenderer.remeasureAutoHeight();
+          this._bodyWindowRenderer.measureAutoHeights();
+        }
       },
       onDataChanged: (params) => {
         this._modelChangeHandler.onDataChanged(params);
@@ -971,13 +974,24 @@ export class GridRenderer {
       },
       rtl: () => this.rtl,
       keepCenterColumns: () => {
+        const keep: number[] = [];
         const colId = this._cellEditRenderer?.getBodyEditColumnId();
         const meta = colId ? this._leafColumnLookup.get(colId) : undefined;
-        return meta?.section === "center" ? [meta.localIndex] : [];
+        if (meta?.section === "center") keep.push(meta.localIndex);
+        // An autoHeight column decides its rows' heights, so it is measured wherever it scrolls.
+        const leaves = this.core.getColumnModel().getCenterLeaves();
+        for (let i = 0; i < leaves.length; i++) if (leaves[i].autoHeight) keep.push(i);
+        return keep;
       },
       reconcileCenter: (slot, cols) => this._bodyRowPoolRenderer.reconcileCenter(slot, cols),
       restoreFillHandle: () => this._fillHandle.restoreHandle(),
+      onContentHeightChanged: () => {
+        this._bodyViewportRenderer.recomputeView();
+        this._pinnedRowsRenderer?.refreshRowHeights();
+      },
     });
+    // A web font arriving after the first paint re-wraps every autoHeight cell.
+    (document as Document & { fonts?: FontFaceSet }).fonts?.addEventListener?.("loadingdone", this._onFontsLoaded);
 
     this._paginationRenderer = new PaginationRenderer({
       core: this.core,
@@ -1818,9 +1832,13 @@ export class GridRenderer {
    * reconciles icons separately (e.g. the React wrapper merging live props). */
   setThemeVars(theme?: GridTheme) {
     this._themeRenderer.setTheme(theme);
-    // A theme's font and padding change how tall a wrapped autoHeaderHeight label is.
+    // A theme's font and padding change how tall a wrapped autoHeaderHeight label is, and how tall
+    // an autoHeight row is.
     this._headerRenderer?.remeasureAutoHeight();
+    this._bodyWindowRenderer?.measureAutoHeights();
   }
+
+  private readonly _onFontsLoaded = () => this._bodyWindowRenderer?.measureAutoHeights();
 
   /** Apply a theme's CSS variables and its icon overrides. Icons explicitly set via
    * `options.icons` take precedence over icons carried by the theme. */
@@ -1863,6 +1881,7 @@ export class GridRenderer {
   }
 
   destroy() {
+    (document as Document & { fonts?: FontFaceSet }).fonts?.removeEventListener?.("loadingdone", this._onFontsLoaded);
     if (this._keyboardNavigationAnnouncementTimer) {
       clearTimeout(this._keyboardNavigationAnnouncementTimer);
       this._keyboardNavigationAnnouncementTimer = undefined;
@@ -2067,6 +2086,8 @@ export class GridRenderer {
         this._repaintCell(rowId, colId);
       }
     }
+    // New values can need another number of lines in an autoHeight cell.
+    this._bodyWindowRenderer.measureAutoHeights();
   }
 
   // Re-invoke the cell renderer for every visible cell of the given columns, telling each renderer

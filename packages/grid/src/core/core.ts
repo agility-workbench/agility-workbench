@@ -270,10 +270,13 @@ export class GridCore implements IGridCore {
   private displayedPinnedRows: Record<RowPinnedPosition, IRowNode[]> = { top: [], bottom: [] };
   private bodyPinnedRowIds = new Set<GridId>();
   private bodyPinnedViewIndices: number[] = [];
+  /** Whether a displayed leaf column is `autoHeight` (re-derived on every column change). */
+  private autoHeightActive = false;
   /** Body-row tops and heights in the rendered view's index space (`getRowHeight`). */
   readonly rowHeights = new RowHeightIndex({
     defaultHeight: () => this.options.rowHeight,
     getRowHeight: () => this.options.getRowHeight,
+    hasAutoHeight: () => this.autoHeightActive,
     viewCount: () => this.rowModel.getViewCount(),
     nodeAt: (viewIndex) => this.rowModel.getRowNodeAtViewIndex(viewIndex),
     isBodyPinned: (rowId) => this.bodyPinnedRowIds.has(rowId),
@@ -353,6 +356,15 @@ export class GridCore implements IGridCore {
     // Registered first, so the caches are dropped before any renderer handler repaints from them.
     this.on("rowsChanged", () => this.invalidateGroupSelectionCaches());
     this.on("rowsChanged", () => this.rowHeights.invalidate());
+    // Whether rows take measured heights follows the displayed columns. Measurements themselves are
+    // never dropped here: the renderer re-measures every drawn row, so a stale one is corrected the
+    // next time its row is on screen, without the scroll jump a reset would cause.
+    this.on("columnsChanged", () => {
+      const active = this.columnModel.getLeaves().some(col => col.autoHeight && !col.hidden);
+      if (active === this.autoHeightActive) return;
+      this.autoHeightActive = active;
+      this.rowHeights.invalidate();
+    });
     this.on("cellsChanged", () => this.invalidateGroupSelectionCaches());
     this.bindOptionCallbacks();
   }

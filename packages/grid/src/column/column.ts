@@ -108,6 +108,10 @@ export class Column {
   wrapHeaderText: boolean = false;
   /** `ColDef.autoHeaderHeight`: the header level holding this column grows to fit its label. */
   autoHeaderHeight: boolean = false;
+  /** `ColDef.wrapText`: the cell's text wraps instead of truncating. */
+  wrapText: boolean = false;
+  /** `ColDef.autoHeight`: rows grow to fit this column's cell content. */
+  autoHeight: boolean = false;
   pinnable: boolean;
   hideable?: boolean;
   suppressColumnPanel: boolean = false;
@@ -244,6 +248,8 @@ export class Column {
         : null;
     this.wrapHeaderText = isTrue(col.wrapHeaderText);
     this.autoHeaderHeight = isTrue(col.autoHeaderHeight);
+    this.wrapText = isTrue(col.wrapText);
+    this.autoHeight = isTrue(col.autoHeight);
     this.pinnable = !isFalse((col as InternalColDef).__pinnable);
     this.hideable = !isFalse(col.hideable);
     this.suppressColumnPanel = isTrue(col.suppressColumnPanel);

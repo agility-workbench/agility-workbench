@@ -7,6 +7,8 @@ export interface RowHeightSource {
   /** The grid's `rowHeight` (option, else theme, else 43). */
   defaultHeight(): number;
   getRowHeight(): GetRowHeight | undefined;
+  /** Whether a displayed column is `autoHeight`: rows then take measured heights too. */
+  hasAutoHeight(): boolean;
   viewCount(): number;
   nodeAt(viewIndex: number): IRowNode | undefined;
   /** Application-pinned model rows leave the body's flow, so they take no height there. */
@@ -19,10 +21,17 @@ export interface RowHeightSource {
  * pixel offset. Offsets are in body-content space and compacted for application-pinned model rows,
  * which hold a view index but no place in the body flow.
  *
- * Without `getRowHeight` every row is `rowHeight` tall and the answers are arithmetic, exactly as
- * before the index existed. With it, the index keeps prefix sums over the view, rebuilt lazily after
- * `invalidate()` (any row or pin change); a row's height is asked once per row id and data object
- * and cached until `resetHeights()`, so a rebuild after sorting or filtering calls nothing.
+ * Without `getRowHeight` or an `autoHeight` column every row is `rowHeight` tall and the answers
+ * are arithmetic, exactly as before the index existed. Otherwise the index keeps prefix sums over
+ * the view, rebuilt lazily after `invalidate()` (any row or pin change); a row's height is asked once
+ * per row id and data object and cached until `resetHeights()`, so a rebuild after sorting or
+ * filtering calls nothing.
+ *
+ * `autoHeight` rows also carry a measured height (`setMeasured`, from the renderer once the row has
+ * been drawn): the row is then `max(configured, measured)` tall. A measurement belongs to the data
+ * object it was taken with, so a replaced row falls back to its configured height until it is
+ * measured again. A measurement is overwritten whenever its row is drawn, so after a width, column,
+ * theme or font change the drawn rows are re-measured and the rest are corrected as they scroll in.
  */
 export class RowHeightIndex {
   /** tops[i] = compacted top of view row i; tops[count] = total height. Null while uniform or stale. */
@@ -30,6 +39,7 @@ export class RowHeightIndex {
   private dirty = true;
   private min = 0;
   private readonly cache = new Map<GridId, { data: unknown; height: number }>();
+  private readonly measured = new Map<GridId, { data: unknown; height: number }>();
 
   constructor(private readonly source: RowHeightSource) { }
 
@@ -41,15 +51,53 @@ export class RowHeightIndex {
   /** Forget every cached height, so `getRowHeight` is asked again for each row. */
   resetHeights(): void {
     this.cache.clear();
+    this.measured.clear();
     this.dirty = true;
   }
 
+  /** Whether rows take measured heights (an `autoHeight` column is displayed). */
+  measuresContent(): boolean {
+    return this.source.hasAutoHeight();
+  }
+
   isUniform(): boolean {
-    return !this.source.getRowHeight();
+    return !this.source.getRowHeight() && !this.source.hasAutoHeight();
   }
 
   /** Height of a row wherever it is drawn (body, pinned band, sticky mirror). */
   heightOfNode(node: IRowNode | undefined): number {
+    const configured = this.configuredHeight(node);
+    if (!node || !this.source.hasAutoHeight()) return configured;
+    const measured = this.measured.get(node.id);
+    return measured && measured.data === node.data ? Math.max(configured, measured.height) : configured;
+  }
+
+  /**
+   * Record the content height a drawn `autoHeight` row needs. Returns whether the row's height
+   * changed. With the row's view index and fresh offsets, the offsets below it are shifted in place
+   * (a scroll that measures a few new rows does not rebuild the whole view); otherwise they are
+   * recomputed on the next read. A view index of -1 marks a row outside the body flow (a pinned
+   * band row), whose height moves no body offset.
+   */
+  setMeasured(node: IRowNode, height: number, viewIndex?: number): boolean {
+    const before = this.heightOfNode(node);
+    this.measured.set(node.id, { data: node.data, height });
+    const after = this.heightOfNode(node);
+    if (after === before) return false;
+    if (viewIndex === -1 || this.source.isBodyPinned(node.id)) return true;
+    const tops = this.tops;
+    if (!this.dirty && tops && viewIndex != null && viewIndex >= 0 && viewIndex < tops.length - 1
+      && tops[viewIndex + 1] - tops[viewIndex] === before) {
+      const delta = after - before;
+      for (let i = viewIndex + 1; i < tops.length; i++) tops[i] += delta;
+    } else {
+      this.dirty = true;
+    }
+    return true;
+  }
+
+  /** `getRowHeight`'s answer for a row (cached), else `rowHeight`. */
+  private configuredHeight(node: IRowNode | undefined): number {
     const fallback = this.source.defaultHeight();
     const getRowHeight = this.source.getRowHeight();
     if (!getRowHeight || !node) return fallback;
@@ -68,12 +116,12 @@ export class RowHeightIndex {
    * offsets are then stale and recomputed on the next read.
    */
   refreshNodes(nodes: Iterable<IRowNode | undefined>): boolean {
-    if (this.isUniform()) return false;
+    if (!this.source.getRowHeight()) return false;
     let changed = false;
     for (const node of nodes) {
       if (!node) continue;
       const before = this.cache.get(node.id)?.height;
-      if (before !== undefined && this.heightOfNode(node) !== before) changed = true;
+      if (before !== undefined && this.configuredHeight(node) !== before) changed = true;
     }
     if (changed) this.dirty = true;
     return changed;

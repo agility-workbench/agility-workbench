@@ -72,6 +72,9 @@ export interface LayoutMatrixConfig {
   floatingFilter?: boolean;
   /** `getRowHeight`: every fifth data row 72px, group rows 56px, pinned rows 52px, the rest `rowHeight`. */
   variableRows?: boolean;
+  /** `wrapText` + `autoHeight` on Notes (pinned right under `pinned: "right" | "both"`) and Owner
+   * (centre), with notes of one to three sentences and an occasional long owner. */
+  autoHeight?: boolean;
 }
 
 export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
@@ -96,6 +99,7 @@ export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
   columnVirtualization: true,
   floatingFilter: false,
   variableRows: false,
+  autoHeight: false,
 };
 
 export interface InvariantViolation {
@@ -183,7 +187,7 @@ function extraColumnCount(columns: LayoutMatrixConfig["columns"]): number {
   return columns === "huge" ? 200 : columns === "many" ? 20 : 0;
 }
 
-function buildRows(count: number, extraColumns: number): Row[] {
+function buildRows(count: number, extraColumns: number, longText = false): Row[] {
   const rand = mulberry32(42);
   const pick = picker(rand);
   return Array.from({ length: count }, (_, i) => {
@@ -202,6 +206,10 @@ function buildRows(count: number, extraColumns: number): Row[] {
       fw: i % 7 === 3,
     };
     for (let c = 1; c <= extraColumns; c++) row[`c${String(c).padStart(2, "0")}`] = Math.floor(rand() * 1_000);
+    if (longText) {
+      row.notes = Array.from({ length: 1 + (i % 3) }, (_, k) => NOTES[(i + k) % NOTES.length]).join(" ");
+      if (i % 4 === 1) row.owner = `${row.owner} and the regional partnerships team`;
+    }
     return row;
   });
 }
@@ -235,12 +243,13 @@ function buildColumnDefs(config: Required<LayoutMatrixConfig>): ColDef[] {
   // children all behave alike gets none), so the groupToggle sequence has something to collapse.
   const country = leaf("country", "Country", wide ? 260 : 130, { columnGroupShow: "open" });
   const account = leaf("account", "Account", 170);
-  const owner = leaf("owner", "Owner", 130, { columnGroupShow: "open" });
+  const wrap: Partial<ColDef> = config.autoHeight ? { wrapText: true, autoHeight: true } : {};
+  const owner = leaf("owner", "Owner", 130, { columnGroupShow: "open", ...wrap });
   const status = leaf("status", "Status", 110);
   const units = leaf("units", "Units", 100, { type: ColumnType.NUMBER });
   const revenue = leaf("revenue", "Revenue", 140, { type: ColumnType.CURRENCY });
   const margin = leaf("margin", "Margin %", wide ? 260 : 110, { type: ColumnType.NUMBER });
-  const notes = leaf("notes", "Notes", wide ? 260 : 220);
+  const notes = leaf("notes", "Notes", wide ? 260 : 220, wrap);
   const extras: ColDef[] = Array.from({ length: extraColumnCount(config.columns) }, (_, c) => {
     const id = `c${String(c + 1).padStart(2, "0")}`;
     return leaf(id, id.toUpperCase(), 90, { type: ColumnType.NUMBER });
@@ -384,7 +393,7 @@ async function mount(
   destroy();
   current = resolveConfig(config);
   frame.style.display = opts.hidden ? "none" : "";
-  const rows = buildRows(current.rows, extraColumnCount(current.columns));
+  const rows = buildRows(current.rows, extraColumnCount(current.columns), current.autoHeight);
   if (current.rtl) rows.forEach((row, i) => { row.owner = RTL_OWNERS[i % RTL_OWNERS.length]; });
   api = createGrid(host, buildOptions(current, rows));
   if (current.aggregates) {
@@ -418,8 +427,53 @@ function check(): InvariantReport | null {
   const root = gridRoot();
   if (!root) return null;
   const report = window.__layoutInvariants.check(root);
-  if (current?.variableRows) report.violations.push(...checkRowOffsets(root, current));
+  // row-offset predicts heights from getRowHeight alone, which measured rows outgrow.
+  if (current?.variableRows && !current.autoHeight) report.violations.push(...checkRowOffsets(root, current));
+  if (current?.autoHeight) report.violations.push(...checkAutoHeight(root));
   return report;
+}
+
+/**
+ * `autoHeight` only: no measured cell clips its content (each `.pte-cell-auto-height` cell is at least
+ * as tall as its content plus its padding), and when the view's last row is drawn the body content
+ * ends exactly at its bottom (the scroll height is the sum of the heights, measured ones included).
+ */
+function checkAutoHeight(root: HTMLElement): InvariantViolation[] {
+  if (!api) return [];
+  const violations: InvariantViolation[] = [];
+  for (const cell of root.querySelectorAll<HTMLElement>(".pte-body .pte-cell-auto-height")) {
+    if (cell.offsetParent === null || !cell.firstChild) continue;
+    const range = document.createRange();
+    range.selectNodeContents(cell);
+    const content = range.getBoundingClientRect().height;
+    const style = getComputedStyle(cell);
+    const needed = content + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const box = cell.clientHeight;
+    if (needed > box + 1.01) {
+      violations.push({
+        id: "auto-height-clipped",
+        severity: "error",
+        message: `an autoHeight cell (row ${cell.closest<HTMLElement>(".pte-row")?.dataset.viewIdx}, ${cell.dataset.colId}) clips its content`,
+        details: { needed: Math.round(needed * 100) / 100, box },
+      });
+      break;
+    }
+  }
+  const count = api.getDisplayedRowCount();
+  const spacer = root.querySelector<HTMLElement>(".pte-spacer");
+  const last = root.querySelector<HTMLElement>(`.pte-viewport .pte-row[data-view-idx="${count - 1}"]`);
+  if (spacer && last && last.style.display !== "none") {
+    const gap = spacer.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
+    if (Math.abs(gap) > 1.01) {
+      violations.push({
+        id: "row-end-flush",
+        severity: "error",
+        message: "the body content does not end at the last row's bottom",
+        details: { gap: Math.round(gap * 100) / 100 },
+      });
+    }
+  }
+  return violations;
 }
 
 /**
@@ -578,6 +632,7 @@ const FIELDS: FieldSpec[] = [
   { key: "columnVirtualization", label: "Column virtualization", kind: "bool" },
   { key: "floatingFilter", label: "Floating filters", kind: "bool" },
   { key: "variableRows", label: "Variable row heights", kind: "bool" },
+  { key: "autoHeight", label: "Auto-height rows", kind: "bool" },
 ];
 
 const style = document.createElement("style");

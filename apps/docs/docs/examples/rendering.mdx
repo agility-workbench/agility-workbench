@@ -47,8 +47,8 @@ const options = {
 `getRowHeight` returns a height in px for one row, or `null`/`undefined` to
 keep `rowHeight`. It applies to data, group, footer and full-width rows, to
 pinned rows and to sticky group rows; the aggregate row under the body keeps
-`rowHeight`. The heights must be known up front: the grid does not measure
-row content, so wrapping cell text is not supported yet.
+`rowHeight`. These heights are known up front; to size rows from their
+content, see the next section.
 
 The grid asks once per row and caches the answer by row id and data object.
 Replacing a row's data object (`setRowData`, a transaction update) asks again;
@@ -59,6 +59,33 @@ a new function re-asks every row.
 
 On the server-side row model, rows that have not loaded take `rowHeight` and
 change height when their block arrives, which moves the rows below them.
+
+## Wrapping cell text and auto row height
+
+```ts
+const columnDefs = [
+  { colId: "name", key: "name", label: "Name", pinned: "left" },
+  { colId: "notes", key: "notes", label: "Notes", width: 260, wrapText: true, autoHeight: true },
+] satisfies ColDef[];
+```
+
+`wrapText` lets a cell's text break onto several lines (with
+`--pte-cell-wrap-padding-block`, 8px by default, above and below it). On its
+own the row keeps its height and the cell clips what does not fit. `autoHeight`
+grows each row to its tallest `autoHeight` cell, never below the height
+`rowHeight` or `getRowHeight` gives it; the pinned parts of the row grow with
+it.
+
+Rows are measured as they are drawn. Until a row has been on screen it takes
+its configured height, so the scrollbar is an estimate that settles as you
+scroll; rows that grow above the viewport move the scroll position with them,
+so what you are looking at stays put. Rows are re-measured when their values,
+the column widths (once a resize is released), the visible columns, the theme
+or the loaded fonts change. Content that changes size on its own (an image that
+loads, a renderer that redraws later) is not seen: call `api.resetRowHeights()`.
+An `autoHeight` column is always rendered, even when column virtualization
+would leave it out, so its rows can be measured. Full-width rows are not
+measured.
 
 ## Function cell renderer
 

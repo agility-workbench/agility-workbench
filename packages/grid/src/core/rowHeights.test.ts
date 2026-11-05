@@ -11,12 +11,14 @@ function source(nodes: Array<IRowNode | undefined>, opts: {
   getRowHeight?: GetRowHeight;
   pinned?: string[];
   defaultHeight?: number;
+  autoHeight?: boolean;
 } = {}) {
   const pinned = new Set(opts.pinned ?? []);
-  const state = { nodes, getRowHeight: opts.getRowHeight, defaultHeight: opts.defaultHeight ?? 40 };
+  const state = { nodes, getRowHeight: opts.getRowHeight, defaultHeight: opts.defaultHeight ?? 40, autoHeight: opts.autoHeight ?? false };
   const src: RowHeightSource = {
     defaultHeight: () => state.defaultHeight,
     getRowHeight: () => state.getRowHeight,
+    hasAutoHeight: () => state.autoHeight,
     viewCount: () => state.nodes.length,
     nodeAt: (i) => state.nodes[i],
     isBodyPinned: (id) => pinned.has(id),
@@ -130,5 +132,72 @@ describe("RowHeightIndex", () => {
     const index = new RowHeightIndex(source([node("a")], { getRowHeight: () => 10 }).src);
     expect(index.topOf(-2)).toBe(-80);
     expect(index.topOf(3)).toBe(10 + 2 * 40);
+  });
+
+  describe("measured heights (autoHeight)", () => {
+    it("is not uniform while an autoHeight column shows, and grows rows to what they need", () => {
+      const nodes = [node("a"), node("b"), node("c")];
+      const { src, state } = source(nodes, { autoHeight: true });
+      const index = new RowHeightIndex(src);
+      expect(index.isUniform()).toBe(false);
+      expect(index.totalHeight()).toBe(120);
+      expect(index.setMeasured(nodes[1], 90, 1)).toBe(true);
+      expect(index.heightAt(1)).toBe(90);
+      expect(index.topOf(2)).toBe(130);
+      expect(index.totalHeight()).toBe(170);
+      // Never shorter than the configured height.
+      expect(index.setMeasured(nodes[2], 10, 2)).toBe(false);
+      expect(index.heightAt(2)).toBe(40);
+      // Measurements stay while the column is hidden, unused.
+      state.autoHeight = false;
+      expect(index.isUniform()).toBe(true);
+      expect(index.totalHeight()).toBe(120);
+    });
+
+    it("shifts the offsets below a measured row in place", () => {
+      const nodes = Array.from({ length: 5 }, (_, i) => node(`r${i}`));
+      const index = new RowHeightIndex(source(nodes, { autoHeight: true }).src);
+      expect(index.topOf(4)).toBe(160);
+      index.setMeasured(nodes[1], 100, 1);
+      expect(index.topOf(1)).toBe(40);
+      expect(index.topOf(2)).toBe(140);
+      expect(index.topOf(4)).toBe(220);
+      // A shrink back is applied too.
+      index.setMeasured(nodes[1], 50, 1);
+      expect(index.topOf(4)).toBe(170);
+    });
+
+    it("takes the larger of getRowHeight and the measurement", () => {
+      const nodes = [node("a")];
+      const index = new RowHeightIndex(source(nodes, { autoHeight: true, getRowHeight: () => 70 }).src);
+      index.setMeasured(nodes[0], 60, 0);
+      expect(index.heightAt(0)).toBe(70);
+      index.setMeasured(nodes[0], 85, 0);
+      expect(index.heightAt(0)).toBe(85);
+    });
+
+    it("ignores a measurement taken with a replaced data object, and forgets them on resetHeights", () => {
+      const original = node("a");
+      const { src, state } = source([original], { autoHeight: true });
+      const index = new RowHeightIndex(src);
+      index.setMeasured(original, 90, 0);
+      expect(index.heightAt(0)).toBe(90);
+      state.nodes = [node("a", { id: "a", replaced: true })];
+      index.invalidate();
+      expect(index.heightAt(0)).toBe(40);
+      state.nodes = [original];
+      index.invalidate();
+      expect(index.heightAt(0)).toBe(90);
+      index.resetHeights();
+      expect(index.heightAt(0)).toBe(40);
+    });
+
+    it("moves no body offset for a band row", () => {
+      const nodes = [node("a"), node("b")];
+      const index = new RowHeightIndex(source(nodes, { autoHeight: true }).src);
+      expect(index.totalHeight()).toBe(80);
+      expect(index.setMeasured(node("band", {}), 120, -1)).toBe(true);
+      expect(index.totalHeight()).toBe(80);
+    });
   });
 });

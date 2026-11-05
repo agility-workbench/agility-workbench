@@ -1,4 +1,5 @@
 import { GridCore } from "../../core/core";
+import { measureAutoHeightRow } from "../body/autoHeight";
 import { PINNED_SECTION_CAP_RATIO, rootContentWidth } from "../layout/pinnedSectionLayout";
 import type { IGridAPI } from "../../interfaces/iGridAPI";
 import { isExpandableNode, type IRowNode } from "../../interfaces/iRowNode";
@@ -976,12 +977,51 @@ export class PinnedRowsRenderer implements PinnedRowsController {
     band.centerHost.replaceChildren();
     band.rightHost.replaceChildren();
     band.root.style.display = rows.length > 0 ? "flex" : "none";
-    this.bandRowHeights.set(band, rows.map(({ node }) => this.params.core.rowHeights.heightOfNode(node)));
-    this.layoutBandHeight(band);
 
     rows.forEach(({ node, position }, rowIndex) => {
       this.renderRow(band, node, position, rowIndex);
     });
+    this.measureBandRows(band, rows);
+    this.bandRowHeights.set(band, rows.map(({ node }) => this.params.core.rowHeights.heightOfNode(node)));
+    this.layoutBandHeight(band);
+  }
+
+  /** `autoHeight`: measure the band's rows once rendered (all read, then all written) and size their
+   * fragments from the result. */
+  private measureBandRows(band: BandElements, rows: RenderedPinnedRow[]): void {
+    const heights = this.params.core.rowHeights;
+    if (!heights.measuresContent() || rows.length === 0) return;
+    const hosts = [band.leadingHost, band.leftHost, band.centerHost, band.rightHost];
+    const fragmentsOf = (rowIndex: number) => hosts.map(host => host.children[rowIndex] as HTMLElement | undefined);
+    const required = rows.map((_, rowIndex) => measureAutoHeightRow(fragmentsOf(rowIndex)));
+    rows.forEach(({ node }, rowIndex) => {
+      const value = required[rowIndex];
+      if (value == null) return;
+      heights.setMeasured(node, value, -1);
+      const px = `${heights.heightOfNode(node)}px`;
+      for (const fragment of fragmentsOf(rowIndex)) {
+        if (fragment && fragment.style.height !== px) fragment.style.height = px;
+      }
+    });
+  }
+
+  /**
+   * Row heights changed without the rows changing (`autoHeight` measured body rows): re-size the
+   * docked mirrors to their rows' heights and re-place the stack, which reads the same offsets.
+   */
+  refreshRowHeights(): void {
+    const core = this.params.core;
+    const model = core.getRowModel();
+    for (const host of [this.sticky.leadingHost, this.sticky.leftHost, this.sticky.centerHost, this.sticky.rightHost]) {
+      for (const element of Array.from(host.children) as HTMLElement[]) {
+        const rowId = element.dataset.rowId;
+        const node = rowId ? model.getRowNode(rowId) : undefined;
+        if (!node) continue;
+        const px = `${core.rowHeights.heightOfNode(node)}px`;
+        if (element.style.height !== px) element.style.height = px;
+      }
+    }
+    this.render(this.lastScrollTop);
   }
 
   /**

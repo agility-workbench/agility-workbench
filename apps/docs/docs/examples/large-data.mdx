@@ -26,7 +26,8 @@ on the height of the grid, never on the number of rows. Row virtualization is al
 share one height (`rowHeight`) unless `getRowHeight` gives them their own; then the grid keeps the
 rows' running offsets, rebuilt when the displayed rows change, and finds the window with a binary
 search. The pool is sized for the shortest row in the view, so a few very short rows cost a larger
-pool for the whole grid.
+pool for the whole grid. With `autoHeight` columns every drawn row is also measured, one layout read
+per window move, and the columns are rendered even outside the horizontal viewport.
 
 ## Column virtualization
 
