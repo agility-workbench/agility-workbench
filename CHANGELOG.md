@@ -3,6 +3,44 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.16.0 — 2026-11-09
+
+### Features
+
+- **Rows can have their own heights with `getRowHeight`.** `getRowHeight({ node, data })` returns a
+  row's height in px, or `null`/`undefined` for `rowHeight`. It sizes data, group, footer and
+  full-width rows in the body, application-pinned rows and their band, and sticky group rows (the
+  push-out follows each header's height); the aggregate row keeps `rowHeight`. Scrolling,
+  `ensureRowVisible`/`ensureCellVisible`, Page Up/Down and the row window all work from the rows'
+  running offsets, and the row pool is sized for the shortest row. Heights are cached per row id
+  and data object: a replaced data object (`setRowData`, a transaction update) is asked again, and
+  the new `api.resetRowHeights()` re-asks every row. `getRowHeight` is updatable through
+  `updateGridOptions` and is a live prop/input in both wrappers. Grids without it lay out exactly as
+  before. `RowHeightParams` and `GetRowHeight` are exported.
+
+- **Cells can wrap their text, and rows can grow to fit it.** `ColDef.wrapText` wraps a cell's text
+  onto several lines (with `--pte-cell-wrap-padding-block` above and below); `ColDef.autoHeight` grows
+  each row to its tallest `autoHeight` cell, never below its `rowHeight` / `getRowHeight` height, with
+  its pinned fragments, sticky mirror and pinned-band row growing too. Rows are measured as they are
+  drawn (one layout read per window move) and re-measured when their values, the column widths, the
+  visible columns, the theme or the loaded fonts change; rows growing above the viewport keep the row
+  at its top in place. `autoHeight` columns are always rendered under column virtualization so their
+  rows can be measured.
+
+### Fixes
+
+- **The body no longer ends in blank space for application-pinned model rows.** Rows pinned out of
+  the body (`api.setRowPinned`, `isRowPinned`) still counted towards the body's scroll height, so the
+  body could scroll one blank row past its end per pinned row.
+
+### Tooling
+
+- **Layout probe:** a `row-flow` invariant (consecutive body rows abut), a `variableRows` harness flag
+  with a `row-offset` check (each rendered row sits at the sum of the heights above it), and five
+  `variable-rows-*` cases (pinned columns, pinned rows, sticky groups, full-width rows, RTL); an
+  `autoHeight` flag with `auto-height-clipped` (no measured cell clips its content) and `row-end-flush`
+  (the content ends at the last row) checks, and five `auto-height-*` cases.
+
 ## 1.15.0 — 2026-11-02
 
 ### Features

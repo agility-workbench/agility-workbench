@@ -650,6 +650,29 @@ and pinned tree-data parents — synthetic group headers are never editable. Scr
 into view accounts for the sticky ancestor overlay, so the row lands below the docked chain rather
 than hidden underneath it.
 
+## Row heights and wrapping text
+
+Rows are `rowHeight` tall unless `getRowHeight` gives them their own height, or an `autoHeight`
+column sizes them from their content:
+
+```ts
+createGrid(el, {
+  rowHeight: 36,
+  getRowHeight: ({ node }) => (node.isGroup ? 48 : undefined), // undefined = rowHeight
+  columnDefs: [
+    { colId: "name", key: "name", label: "Name", pinned: "left" },
+    { colId: "notes", key: "notes", label: "Notes", width: 260, wrapText: true, autoHeight: true },
+  ],
+});
+```
+
+`getRowHeight` applies to body, pinned and sticky group rows. Answers are cached per row id and
+data object (a replaced data object is asked again); `api.resetRowHeights()` re-asks every row.
+`wrapText` lets a cell's text break onto several lines; `autoHeight` grows each row to its tallest
+`autoHeight` cell, never below its configured height, with its pinned parts growing too. Rows are
+measured as they are drawn, so the scroll height settles as you scroll, and rows that grow above
+the viewport keep what you are looking at in place.
+
 ## Tree data
 
 Tree data supports four explicit relationship modes: three client-side ones, and `"server"` on the

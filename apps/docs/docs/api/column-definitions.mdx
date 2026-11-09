@@ -75,6 +75,8 @@ management drawer.
 | --- | --- |
 | `lockPosition` | `true` / `"left"` holds the column at the left edge of its section, `"right"` at the right edge. It cannot be dragged or moved (header, column panel, `api.moveColumn`), other columns never displace it, and `applyColumnState`, saved views and `setColumnDefs` put it back at its edge. Pinning still applies (locked within the pinned section). On a group child it locks within the group; on a group definition it locks the group. See [Locking a column's position](../examples/columns.mdx#locking-a-columns-position) |
 | `wrapHeaderText` | The header label wraps onto several lines instead of being truncated; icons and menu keep their place. Without `autoHeaderHeight` a wrapped label is clipped at the configured height |
+| `wrapText` | The cell's text wraps onto several lines instead of being truncated. Without `autoHeight` the row keeps its height and wrapped text is clipped |
+| `autoHeight` | Rows grow to fit this column's cell content: the tallest `autoHeight` cell plus padding, never below the row's `rowHeight` / `getRowHeight` height. Rows are measured as they are drawn; the column always renders, even outside the horizontal viewport. See [Wrapping cell text](../examples/rendering.mdx#wrapping-cell-text-and-auto-row-height) |
 | `autoHeaderHeight` | The header level holding this column (or group) grows to fit its label: the tallest such label on the level plus padding, never below the configured `headerHeight` / `leafHeaderHeight` / `parentHeaderHeight`. Re-measured on width, column, label, header-height, theme and font changes. See [Wrapping header text](../examples/columns.mdx#wrapping-header-text-and-auto-header-height) |
 
 ## Sort and filter

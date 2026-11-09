@@ -47,6 +47,8 @@
   --pte-cell-padding-right: 12px;
   --pte-cell-padding-top: 0px;
   --pte-cell-padding-bottom: 0px;
+  /* Vertical padding of a wrapping cell (ColDef.wrapText), so lines do not touch the row edges. */
+  --pte-cell-wrap-padding-block: 8px;
   --pte-hcell-filter-active-color: #3b82f6;
   --pte-icon-color: #6b7280;
   --pte-icon-first-page: url(icons/double-left.svg);
@@ -4465,6 +4467,17 @@
 
 .pte-cell.pte-cell-custom-renderer {
   padding: 0;
+}
+
+/* ColDef.wrapText: the text breaks onto several lines (between words, and inside a word only when
+   one does not fit) instead of truncating. Without autoHeight the row keeps its height and the cell
+   clips what wraps past it. */
+.pte-cell.pte-cell-wrap-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  padding-top: var(--pte-cell-wrap-padding-block);
+  padding-bottom: var(--pte-cell-wrap-padding-block);
 }
 
 /* Row grouping */

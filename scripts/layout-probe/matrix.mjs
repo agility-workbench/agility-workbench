@@ -75,6 +75,28 @@ export const CASES = [
     config: { pinned: "both", floatingFilter: true },
     sequences: ["scrolled", "pinToggle", "hideToggle", "headerHeight", "window", "floatingToggle"],
   },
+  // getRowHeight: rows of three heights in every section, band and the sticky stack. row-flow and
+  // row-y catch a window translated to the wrong top or a fragment left at the default height.
+  {
+    name: "variable-rows-both",
+    config: { pinned: "both", rowNumbers: true, checkboxes: "left", variableRows: true },
+    sequences: ["scrolled", "bodyScroll", "pinToggle", "window"],
+  },
+  { name: "variable-rows-pinned-rows", config: { pinned: "left", pinnedRows: "both", variableRows: true }, sequences: ["scrolled", "bodyScroll"] },
+  { name: "variable-rows-sticky", config: { pinned: "both", grouping: "sticky", variableRows: true }, sequences: ["scrolled", "bodyScroll", "groupToggle"] },
+  { name: "variable-rows-full-width", config: { pinned: "both", fullWidth: true, variableRows: true }, sequences: ["scrolled", "bodyScroll"] },
+  { name: "variable-rows-rtl", config: { pinned: "both", variableRows: true, rtl: true }, sequences: ["scrolled", "bodyScroll"] },
+  // autoHeight + wrapText on Notes (pinned right) and Owner (centre): rows measured from content in
+  // real layout. row-y catches pinned fragments left at another height than the centre's.
+  {
+    name: "auto-height-both",
+    config: { pinned: "both", autoHeight: true },
+    sequences: ["scrolled", "bodyScroll", "pinToggle", "hideToggle", "themeSwap", "window"],
+  },
+  { name: "auto-height-huge", config: { columns: "huge", pinned: "both", autoHeight: true }, sequences: ["scrolled", "bodyScroll"] },
+  { name: "auto-height-pinned-rows", config: { pinned: "right", pinnedRows: "both", autoHeight: true }, sequences: ["bodyScroll"] },
+  { name: "auto-height-sticky", config: { pinned: "both", grouping: "sticky", autoHeight: true }, sequences: ["bodyScroll", "groupToggle"] },
+  { name: "auto-height-variable-rtl", config: { pinned: "both", autoHeight: true, variableRows: true, rtl: true }, sequences: ["bodyScroll"] },
   { name: "floating-filter-groups2", config: { columns: "groups2", pinned: "both", floatingFilter: true }, sequences: ["groupToggle", "scrolled"] },
   { name: "floating-filter-huge", config: { columns: "huge", pinned: "both", floatingFilter: true }, sequences: ["scrolled"] },
   {

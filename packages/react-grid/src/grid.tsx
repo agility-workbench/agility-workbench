@@ -385,6 +385,10 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       instanceRef.current?.api.updateGridOptions({ isRowSelectable: props.isRowSelectable });
     }, [props.isRowSelectable]);
 
+    useLayoutEffect(() => {
+      instanceRef.current?.api.updateGridOptions({ getRowHeight: props.getRowHeight });
+    }, [props.getRowHeight]);
+
     const rowSelectionKey = JSON.stringify(props.rowSelection ?? null);
     const rowSelectionMountedRef = useRef(false);
     useLayoutEffect(() => {

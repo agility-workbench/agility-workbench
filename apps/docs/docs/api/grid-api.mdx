@@ -215,6 +215,7 @@ whole list. Application-pinned band rows are not counted by
 | --- | --- |
 | `refreshCells({ rowIds?, colIds?, force? }?)` | Re-run value getters, formatters, cell styles, and renderers of rendered cells |
 | `redrawRows({ rowIds? }?)` | Destroy and rebuild rendered rows and their renderers |
+| `resetRowHeights()` | Ask `getRowHeight` again for every row and lay the body out from the answers |
 | `flashCells({ rowIds?, colIds?, flashDuration?, fadeDuration? }?)` | Briefly highlight rendered cells, as the change-flash renderer does |
 
 `refreshCells` is for state a cell reads from *outside* the row data — a lookup

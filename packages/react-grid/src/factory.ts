@@ -27,6 +27,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "leafHeaderHeight", props.leafHeaderHeight);
   setIfDefined(options, "parentHeaderHeight", props.parentHeaderHeight);
   setIfDefined(options, "rowHeight", props.rowHeight);
+  setIfDefined(options, "getRowHeight", props.getRowHeight);
   setIfDefined(options, "pinnedTopRowData", props.pinnedTopRowData);
   setIfDefined(options, "pinnedBottomRowData", props.pinnedBottomRowData);
   setIfDefined(options, "getRowId", props.getRowId);

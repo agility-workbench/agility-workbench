@@ -11,6 +11,7 @@ import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 import type { RowPresentation } from "../../interfaces/gridOptions";
 import { BooleanCellRenderer } from "../../cellRenderers/booleanRenderer";
 import { inheritRowPresentation, mergeClassValues, mergeStyleValues } from "./rowPresentation";
+import { AUTO_HEIGHT_CELL_CLASS, WRAP_TEXT_CELL_CLASS } from "./autoHeight";
 
 export class BodyCellRenderer {
   private static readonly CUSTOM_RENDERER_CELL_CLASS = "pte-cell-custom-renderer";
@@ -147,6 +148,9 @@ export class BodyCellRenderer {
     // Row defaults include utility and group cells. Column callbacks retain their existing leaf-row
     // behavior and are composed below when applicable.
     this.applyCellStyling(cell, row, col, viewIndex, rowPresentation);
+    // Pool cells are recycled across columns, so both flags are re-stated on every render.
+    if (cell.classList.contains(WRAP_TEXT_CELL_CLASS) !== col.wrapText) cell.classList.toggle(WRAP_TEXT_CELL_CLASS);
+    if (cell.classList.contains(AUTO_HEIGHT_CELL_CLASS) !== col.autoHeight) cell.classList.toggle(AUTO_HEIGHT_CELL_CLASS);
     if (col.isSelectionCheckboxColumn()) {
       // Content is the static decorative checkbox span created by the row pool; checked state is
       // CSS-driven from the "selected" class. The only per-row state is the app's isRowSelectable

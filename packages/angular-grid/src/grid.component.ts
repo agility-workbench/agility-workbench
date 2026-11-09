@@ -129,6 +129,8 @@ export class AwbGrid<TData = any> implements OnDestroy {
   readonly leafHeaderHeight = input<GridOptions["leafHeaderHeight"]>();
   readonly parentHeaderHeight = input<GridOptions["parentHeaderHeight"]>();
   readonly rowHeight = input<GridOptions["rowHeight"]>();
+  /** Per-row height; see `GridOptions.getRowHeight`. Updatable. */
+  readonly getRowHeight = input<GridOptions<TData>["getRowHeight"]>();
   readonly overscanRowCount = input<GridOptions["overscanRowCount"]>();
   /** Render only the centre columns near the horizontal viewport; see `GridOptions.columnVirtualization`. */
   readonly columnVirtualization = input<GridOptions["columnVirtualization"]>();
@@ -578,6 +580,11 @@ export class AwbGrid<TData = any> implements OnDestroy {
     this.syncEffect(() => {
       const v = this.isRowSelectable();
       return () => api.updateGridOptions({ isRowSelectable: v });
+    });
+
+    this.syncEffect(() => {
+      const v = this.getRowHeight();
+      return () => api.updateGridOptions({ getRowHeight: v });
     });
 
     this.keyedEffect(

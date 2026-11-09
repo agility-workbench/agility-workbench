@@ -8,6 +8,7 @@ import { applyDynamicClasses, applyDynamicStyles } from "./dynamicStyle";
 import { resolveColSpan } from "./colSpan";
 import { ColumnWindow, computeColumnWindow, sameColumns } from "./columnWindow";
 import { scrollStart } from "../layout/direction";
+import { measureAutoHeightRow } from "./autoHeight";
 import type { RowPresentation } from "../../interfaces/gridOptions";
 import {
   mergeClassValues,
@@ -17,7 +18,6 @@ import {
 
 interface BodyWindowRendererParams {
   core: GridCore;
-  rowHeight: () => number;
   rowPool: () => RowPoolDef[];
   body: HTMLDivElement;
   centerSpacer: HTMLDivElement;
@@ -42,6 +42,9 @@ interface BodyWindowRendererParams {
   reconcileCenter: (slot: RowPoolDef, cols: number[]) => Array<{ cell: HTMLDivElement; index: number }>;
   /** Re-seat the fill handle after cells were rendered outside the selection paint. */
   restoreFillHandle: () => void;
+  /** Measured row heights (`autoHeight`) changed the body's content height: re-size the spacers
+   * and whatever mirrors body rows (the sticky overlay). */
+  onContentHeightChanged: () => void;
 }
 
 export class BodyWindowRenderer {
@@ -132,7 +135,7 @@ export class BodyWindowRenderer {
     const rowPool = this.params.rowPool();
     const startIndex = Math.max(
       0,
-      Math.floor(scrollTop / this.params.core.options.rowHeight) - this.params.core.options.overscanRowCount
+      this.params.core.rowHeights.indexAt(scrollTop) - this.params.core.options.overscanRowCount
     );
     const endIndex = Math.min(total, startIndex + rowPool.length);
 
@@ -157,7 +160,62 @@ export class BodyWindowRenderer {
     this.params.setStartIndex(startIndex);
     this.translateViewports(startIndex);
     this.patchRows(startIndex, total, rowPool);
+    this.measureAutoHeights();
   }
+
+  /**
+   * `autoHeight`: measure the drawn rows and lay the body out from what they need. Every row is read
+   * before anything is written (one forced layout per pass). Rows that grew above the viewport would
+   * push what the user is looking at down, so the scroll offset moves with them: the row at the top
+   * of the viewport stays where it was. A changed layout can move the window to another start row,
+   * whose newly drawn rows are measured in the next pass; a few passes settle any scroll position.
+   *
+   * Runs after every window patch, and from the renderer after cell repaints, width changes, theme
+   * and font changes. A no-op without an `autoHeight` column.
+   */
+  measureAutoHeights(): void {
+    const core = this.params.core;
+    const heights = core.rowHeights;
+    if (!heights.measuresContent()) return;
+    const model = core.getRowModel();
+    for (let pass = 0; pass < 4 && this.lastStartIndex != null; pass++) {
+      const start = this.lastStartIndex;
+      const rowPool = this.params.rowPool();
+      const readings: Array<{ node: IRowNode; viewIndex: number; required: number; slot: RowPoolDef }> = [];
+      for (let i = 0; i < rowPool.length; i++) {
+        const slot = rowPool[i];
+        if (slot.rowEl.style.display === "none" || slot.rowEl.classList.contains("pte-full-width-row")) continue;
+        const viewIndex = start + i;
+        const node = model.getRowNodeAtViewIndex(viewIndex);
+        if (!node || core.isBodyRowPinned(node.id)) continue;
+        const required = measureAutoHeightRow([slot.leadingRowEl, slot.leftRowEl, slot.rowEl, slot.rightRowEl]);
+        if (required != null) readings.push({ node, viewIndex, required, slot });
+      }
+      const body = this.params.body;
+      const scrollTop = body.scrollTop;
+      const anchor = heights.indexAt(scrollTop);
+      const anchorTop = heights.topOf(anchor);
+      let changed = false;
+      for (const reading of readings) {
+        if (heights.setMeasured(reading.node, reading.required, reading.viewIndex)) changed = true;
+      }
+      if (!changed) return;
+      for (const reading of readings) this.setSlotHeight(reading.slot, heights.heightOfNode(reading.node));
+      this.params.onContentHeightChanged();
+      const shift = heights.topOf(anchor) - anchorTop;
+      if (shift !== 0 && scrollTop > 0) body.scrollTop = scrollTop + shift;
+      const next = Math.max(0, heights.indexAt(body.scrollTop) - core.options.overscanRowCount);
+      if (next === start) {
+        this.translateViewports(start);
+        return;
+      }
+      this.lastStartIndex = next;
+      this.params.setStartIndex(next);
+      this.translateViewports(next);
+      this.patchRows(next, model.getViewCount(), rowPool);
+    }
+  }
+
 
   private requestMissingServerSideRows(startIndex: number, endIndex: number, total: number) {
     const rowModel = this.params.core.getRowModel();
@@ -194,8 +252,7 @@ export class BodyWindowRenderer {
     // Application-pinned model rows are removed from the body's flow (sticky group ancestors are
     // not — they stay in the flow and are mirrored by the overlay). Account for every removed row
     // before the virtual window so the compacted offset holds as the pool advances.
-    const bodyRowsBefore = startIndex - this.params.core.getBodyPinnedRowCountBefore(startIndex);
-    const offsetY = bodyRowsBefore * this.params.rowHeight();
+    const offsetY = this.params.core.rowHeights.topOf(startIndex);
     this.params.leadingViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.leftViewport.style.transform = `translateY(${offsetY}px)`;
     this.params.centerViewport.style.transform = `translateY(${offsetY}px)`;
@@ -243,6 +300,7 @@ export class BodyWindowRenderer {
 
       slot.rowEl.setAttribute("row-id", row.id);
       slot.rowEl.setAttribute("data-view-idx", String(viewIndex));
+      this.setSlotHeight(slot, this.params.core.rowHeights.heightOfNode(row));
 
       if (slot.leadingRowEl) {
         slot.leadingRowEl.setAttribute("data-view-idx", String(viewIndex));
@@ -281,6 +339,15 @@ export class BodyWindowRenderer {
     }
     // Latched in the core: only the first paint that shows a row emits `firstDataRendered`.
     if (painted > 0) this.params.core.noteBodyRowsPainted(painted);
+  }
+
+  /** Size every fragment of a slot to its row's height (`getRowHeight`). Written only on change:
+   * with uniform rows every slot already has the height it was built with. */
+  private setSlotHeight(slot: RowPoolDef, height: number) {
+    const px = `${height}px`;
+    for (const el of [slot.rowEl, slot.leadingRowEl, slot.leftRowEl, slot.rightRowEl]) {
+      if (el && el.style.height !== px) el.style.height = px;
+    }
   }
 
   /** Marks the pinned/leading fragments of a slot in full-width layout (a blank, themeable band). */
@@ -353,7 +420,7 @@ export class BodyWindowRenderer {
       // Their cells are hidden instead, so no pinned value bleeds through beside the host, and a
       // blank fragment is hidden from AT (the host already spans the whole ARIA column range). A
       // checkbox in the centre section stays under the host: only a pinned one can be kept.
-      const rowHeight = `${this.params.rowHeight()}px`;
+      const rowHeight = slot.rowEl.style.height;
       let checkboxKept = false;
       for (const [el, cells] of this.pinnedFragments(slot)) {
         el.classList.add(BodyWindowRenderer.FULL_WIDTH_FRAGMENT_CLASS);

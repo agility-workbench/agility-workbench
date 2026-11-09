@@ -142,12 +142,11 @@ describe("vertical scrollbar compensation", () => {
     const visibility: boolean[] = [];
     const root = element();
     const core = {
-      getRowModel: () => ({ getViewCount: () => rowCount }),
+      rowHeights: { totalHeight: () => rowCount * 40 },
     } as unknown as GridCore;
     const viewport = new BodyViewportRenderer({
       core,
       root,
-      rowHeight: () => 40,
       onVerticalScrollbarVisibilityChanged: visible => visibility.push(visible),
     });
     Object.defineProperty(viewport.getRefs().body, "clientHeight", {

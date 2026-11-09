@@ -364,6 +364,7 @@ export class GridAPI implements IGridAPI {
     }
     if (has("groupTotalRowLabel")) this.core.setGroupTotalRowLabel(options.groupTotalRowLabel);
     if (has("isRowSelectable")) this.core.setIsRowSelectable(options.isRowSelectable);
+    if (has("getRowHeight")) this.core.setGetRowHeight(options.getRowHeight);
 
     // Caller-owned schema, same as `createGrid({ columnDefs })`.
     if (has("columnDefs")) this.core.setColumnDefsFromProps(options.columnDefs);
@@ -502,6 +503,11 @@ export class GridAPI implements IGridAPI {
   redrawRows(params?: RedrawRowsParams): void {
     if (!this._render) return;
     this._render.redrawRows(params?.rowIds ? new Set(params.rowIds.map(String)) : undefined);
+  }
+
+  resetRowHeights(): void {
+    if (!this.core.getOptions().getRowHeight) return;
+    this.core.resetRowHeights();
   }
 
   flashCells(params: FlashCellsParams = {}): void {

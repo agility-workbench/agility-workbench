@@ -22,9 +22,12 @@ scroll it sideways, then turn **Column virtualization** off to compare.
 The body draws a fixed pool of row elements: enough rows to fill the viewport plus
 `overscanRowCount` rows (default 10) above and below it. Scrolling recycles the pool: a row that
 leaves the window is repainted with the row entering it, so the number of row elements depends
-on the height of the grid, never on the number of rows. Row virtualization is always on. All
-rows share one fixed height (`rowHeight`), which is what lets the grid compute the window from
-the scroll position alone.
+on the height of the grid, never on the number of rows. Row virtualization is always on. Rows
+share one height (`rowHeight`) unless `getRowHeight` gives them their own; then the grid keeps the
+rows' running offsets, rebuilt when the displayed rows change, and finds the window with a binary
+search. The pool is sized for the shortest row in the view, so a few very short rows cost a larger
+pool for the whole grid. With `autoHeight` columns every drawn row is also measured, one layout read
+per window move, and the columns are rendered even outside the horizontal viewport.
 
 ## Column virtualization
 

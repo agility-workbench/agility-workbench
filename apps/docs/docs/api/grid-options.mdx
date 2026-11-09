@@ -31,7 +31,8 @@ React and Angular expose `rowData` through their bindings; core integrations use
 
 | Option | Type | Default |
 | --- | --- | --- |
-| `rowHeight` | `number` | The theme's `rowHeight` param, else 43. Fixed at creation; an explicit value wins over the theme |
+| `rowHeight` | `number` | The theme's `rowHeight` param, else 43. Fixed at creation; an explicit value wins over the theme. The default for rows `getRowHeight` leaves alone |
+| `getRowHeight` | `(params: { node, data }) => number \| null \| undefined` | — Height in px of one row; `null`/`undefined` keeps `rowHeight`. Cached per row id and data object (`api.resetRowHeights()` re-asks). Updatable at runtime |
 | `headerHeight` | `number` | The theme's `headerHeight` param, else 43. Height of every header level unless one of the two options below sets it; the body `rowHeight` never sizes the header. An explicit value wins over the theme, which is read at creation only (updatable at runtime) |
 | `leafHeaderHeight` | `number` | `headerHeight`. Height of the leaf level, the bottom header row of column labels. Wins over `headerHeight` (updatable at runtime) |
 | `parentHeaderHeight` | `number` | `headerHeight`. Height of each column-group level above the leaf level, so the header is `(levels - 1) × parentHeaderHeight + leafHeaderHeight` tall. Wins over `headerHeight` (updatable at runtime) |

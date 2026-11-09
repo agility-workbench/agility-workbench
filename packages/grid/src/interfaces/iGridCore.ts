@@ -267,6 +267,8 @@ export interface IGridCore {
   getNodeCellValue(col: Column, node: IRowNode): unknown;
   /** Swap the per-row selection gate; prunes selected rows the new predicate disables. */
   setIsRowSelectable(isRowSelectable: GridOptions["isRowSelectable"]): void;
+  setGetRowHeight(getRowHeight: GridOptions["getRowHeight"]): void;
+  resetRowHeights(): void;
   /** Reconfigure row-selection mode and its checkbox column without rebuilding the grid. */
   setRowSelectionOptions(rowSelection: GridOptions["rowSelection"]): void;
   getKeyboardNavigationMode(): TreeDataKeyboardNavigationMode;

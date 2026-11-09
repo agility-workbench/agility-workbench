@@ -460,6 +460,24 @@ export interface ColDef<TData = any> {
    * loaded fonts change. Default `false`.
    */
   autoHeaderHeight?: boolean;
+  /**
+   * Wrap the cell's text onto several lines instead of truncating it on one. Without
+   * {@link autoHeight} the row keeps its height and text that wraps past it is clipped. Default
+   * `false`.
+   */
+  wrapText?: boolean;
+  /**
+   * Grow each row to fit this column's cell content: the row becomes as tall as its tallest
+   * `autoHeight` cell (plus the cell's padding), never shorter than its `rowHeight` /
+   * `getRowHeight` height. Meant for use with {@link wrapText}. Pinned sections grow with the row.
+   * Rows are measured as they are drawn, so a row's height is known once it has been on screen;
+   * until then it takes its configured height and the scroll height is an estimate. Re-measured
+   * when the row's values, the column widths, the visible columns, the theme or the loaded fonts
+   * change; call `api.resetRowHeights()` after anything else that changes a cell's size (an image
+   * that loads, a renderer that redraws on its own). An `autoHeight` column is always rendered,
+   * even outside the horizontal viewport (column virtualization). Default `false`.
+   */
+  autoHeight?: boolean;
   hideable?: boolean;
   /**
    * Omit this column from the built-in column-management drawer while leaving it available in the

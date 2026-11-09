@@ -15,6 +15,8 @@
  *   cell-x / cell-count / cell-width-row   every column's cells (body rows, aggregate, bands) start
  *                                  where its header cell starts and are as wide
  *   row-y / band-row-y             a row's fragments in the four sections share top and height
+ *   row-flow                       consecutive body rows abut: each starts where the previous one
+ *                                  ends (rows of different heights included)
  *   hcell-clipped / hcell-gap      header cells fit the wrapper exactly; leaves reach its bottom
  *                                  (the levels' bottom, the floating filter row's top border, while
  *                                  that row is shown)
@@ -383,6 +385,23 @@
       });
     }
     compareRowFragments("row-y", viewport);
+
+    /* ---- 3a. body rows stack without gaps or overlaps, whatever their heights ---- */
+    if (viewport.center) {
+      var flow = dataRows(viewport.center)
+        .map(function (row) { return { idx: Number(row.dataset.viewIdx), b: box(row) }; })
+        .sort(function (a, b) { return a.idx - b.idx; });
+      for (var fi = 1; fi < flow.length; fi++) {
+        if (flow[fi].idx !== flow[fi - 1].idx + 1) continue;
+        if (!near(flow[fi].b.top, flow[fi - 1].b.bottom, CELL_TOL)) {
+          err("row-flow", "body row " + flow[fi].idx + " does not start where row " + flow[fi - 1].idx + " ends", {
+            previousBottom: r2(flow[fi - 1].b.bottom),
+            top: r2(flow[fi].b.top),
+          });
+          break;
+        }
+      }
+    }
     ["top", "bottom", "sticky"].forEach(function (name) {
       var band = bands[name];
       if (!band || !displayed(band)) return;

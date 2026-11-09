@@ -127,6 +127,32 @@ class LiveRowSelectionHost {
       [rowData]="rows"
       [columnDefs]="cols"
       rowIdKey="id"
+      [rowHeight]="40"
+      [getRowHeight]="getRowHeight"
+      (gridReady)="api = $event"
+    />
+  `,
+})
+class RowHeightHost {
+  api: IGridAPI | null = null;
+  getRowHeight: GridOptions["getRowHeight"] = ({ data }) => (data?.name === "Globex" ? 100 : undefined);
+  rows = [
+    { id: 1, name: "Acme" },
+    { id: 2, name: "Globex" },
+    { id: 3, name: "Initech" },
+  ];
+  cols: NgColDef[] = [{ colId: "name", key: "name", label: "Name" }];
+}
+
+@Component({
+  standalone: true,
+  imports: [AwbGrid],
+  template: `
+    <awb-grid
+      style="height: 600px"
+      [rowData]="rows"
+      [columnDefs]="cols"
+      rowIdKey="id"
       [rowHeight]="50"
       [headerHeight]="headerHeight"
       [leafHeaderHeight]="leafHeaderHeight"
@@ -237,6 +263,22 @@ describe("AwbGrid visual and runtime options", () => {
     const disabled = gridEl.querySelectorAll<HTMLElement>(".pte-checkbox-cell-disabled");
     expect(disabled).toHaveLength(1);
     expect(disabled[0].getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("applies and live-updates getRowHeight without recreating the API", async () => {
+    const { fixture, gridEl, host } = await mountGridHost(RowHeightHost);
+    const api = host.api!;
+    const spacer = () => gridEl.querySelector<HTMLElement>(".pte-spacer")!.style.height;
+    expect(spacer()).toBe("180px");
+
+    host.getRowHeight = () => 20;
+    await syncGridInputs(fixture);
+    expect(host.api).toBe(api);
+    expect(spacer()).toBe("60px");
+
+    host.getRowHeight = undefined;
+    await syncGridInputs(fixture);
+    expect(spacer()).toBe("120px");
   });
 
   it("applies row and cell conditional styling", async () => {

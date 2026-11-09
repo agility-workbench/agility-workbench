@@ -165,6 +165,8 @@ export type {
   GroupChildCountParams,
   GroupTotalRowPosition,
   GroupTotalRowLabelParams,
+  GetRowHeight,
+  RowHeightParams,
   RowInsertionMenuOptions,
   RowInsertionMenuParams,
   QuickFilterOptions,
