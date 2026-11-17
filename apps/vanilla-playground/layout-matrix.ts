@@ -49,6 +49,9 @@ export interface LayoutMatrixConfig {
   /** SUM aggregates on the numeric columns (shows the aggregate row). */
   aggregates?: boolean;
   pagination?: boolean;
+  /** `paginationAutoPageSize` (with `pagination`): the page holds the rows that fit the body. The
+   * host is marked so the invariants also check the page fills the body without scrolling. */
+  autoPageSize?: boolean;
   pinnedRows?: "none" | "top" | "bottom" | "both";
   /** Row grouping on Region: plain group column, full-width group rows, or sticky group rows. */
   grouping?: "none" | "singleColumn" | "groupRows" | "sticky";
@@ -75,6 +78,10 @@ export interface LayoutMatrixConfig {
   /** `wrapText` + `autoHeight` on Notes (pinned right under `pinned: "right" | "both"`) and Owner
    * (centre), with notes of one to three sentences and an occasional long owner. */
   autoHeight?: boolean;
+  /** `ColDef.flex` on Account (1, minWidth 150), Owner (2), Status (1), Margin % (0.5) and Notes
+   * (1) — the last two pinned right under `pinned: "right" | "both"`, where flex is ignored. The host carries `data-flex-min-content` so
+   * the invariants check the centre's columns fill its viewport whenever their mins fit. */
+  flex?: boolean;
 }
 
 export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
@@ -86,6 +93,7 @@ export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
   checkboxes: "none",
   aggregates: false,
   pagination: false,
+  autoPageSize: false,
   pinnedRows: "none",
   grouping: "none",
   fullWidth: false,
@@ -100,6 +108,7 @@ export const LAYOUT_MATRIX_DEFAULTS: Required<LayoutMatrixConfig> = {
   floatingFilter: false,
   variableRows: false,
   autoHeight: false,
+  flex: false,
 };
 
 export interface InvariantViolation {
@@ -250,6 +259,14 @@ function buildColumnDefs(config: Required<LayoutMatrixConfig>): ColDef[] {
   const revenue = leaf("revenue", "Revenue", 140, { type: ColumnType.CURRENCY });
   const margin = leaf("margin", "Margin %", wide ? 260 : 110, { type: ColumnType.NUMBER });
   const notes = leaf("notes", "Notes", wide ? 260 : 220, wrap);
+  if (config.flex) {
+    account.flex = 1;
+    account.minWidth = 150;
+    owner.flex = 2;
+    status.flex = 1;
+    margin.flex = 0.5;
+    notes.flex = 1;
+  }
   const extras: ColDef[] = Array.from({ length: extraColumnCount(config.columns) }, (_, c) => {
     const id = `c${String(c + 1).padStart(2, "0")}`;
     return leaf(id, id.toUpperCase(), 90, { type: ColumnType.NUMBER });
@@ -319,6 +336,7 @@ function buildOptions(config: Required<LayoutMatrixConfig>, rows: Row[]): Create
     pagination: config.pagination,
   };
   if (config.rtl) options.enableRtl = true;
+  if (config.autoPageSize) options.paginationAutoPageSize = true;
   if (config.floatingFilter) options.floatingFilter = true;
   if (config.headerHeight > 0) options.headerHeight = config.headerHeight;
   if (config.rowHeight > 0) options.rowHeight = config.rowHeight;
@@ -395,6 +413,7 @@ async function mount(
   frame.style.display = opts.hidden ? "none" : "";
   const rows = buildRows(current.rows, extraColumnCount(current.columns), current.autoHeight);
   if (current.rtl) rows.forEach((row, i) => { row.owner = RTL_OWNERS[i % RTL_OWNERS.length]; });
+  host.toggleAttribute("data-expect-auto-page-size", current.autoPageSize);
   api = createGrid(host, buildOptions(current, rows));
   if (current.aggregates) {
     api.setAggregates([
@@ -426,11 +445,29 @@ async function reveal(): Promise<void> {
 function check(): InvariantReport | null {
   const root = gridRoot();
   if (!root) return null;
+  markFlexMinContent();
   const report = window.__layoutInvariants.check(root);
   // row-offset predicts heights from getRowHeight alone, which measured rows outgrow.
   if (current?.variableRows && !current.autoHeight) report.violations.push(...checkRowOffsets(root, current));
   if (current?.autoHeight) report.violations.push(...checkAutoHeight(root));
   return report;
+}
+
+/** `flex` only: mark the host with the narrowest the centre's columns can be (fixed columns as they
+ * are, flex columns at their min), read by the invariants' flex-gap / flex-overflow check. Recomputed
+ * before every check, so pinning, hiding and group toggles are reflected. */
+function markFlexMinContent(): void {
+  if (!api || !current?.flex) {
+    host.removeAttribute("data-flex-min-content");
+    return;
+  }
+  const gridMin = 75; // minResizeWidth's default; the harness never sets it.
+  let min = 0;
+  for (const col of api.getColumnModel().getCenterLeaves()) {
+    if (!col.isVisible()) continue;
+    min += col.getFlex() != null ? Math.max(gridMin, col.minWidth ?? gridMin) : col.computedWidth;
+  }
+  host.setAttribute("data-flex-min-content", String(min));
 }
 
 /**
@@ -633,6 +670,7 @@ const FIELDS: FieldSpec[] = [
   { key: "floatingFilter", label: "Floating filters", kind: "bool" },
   { key: "variableRows", label: "Variable row heights", kind: "bool" },
   { key: "autoHeight", label: "Auto-height rows", kind: "bool" },
+  { key: "flex", label: "Flex columns", kind: "bool" },
 ];
 
 const style = document.createElement("style");

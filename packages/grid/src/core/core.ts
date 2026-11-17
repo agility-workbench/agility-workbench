@@ -184,6 +184,14 @@ export class GridCore implements IGridCore {
   private pageEndIdx: number = 100;
   private totalPages: number = 1;
   private pageSizes: number[] = [25, 50, 100];
+  /**
+   * The page-size options as the application last supplied them (undefined = the defaults); the
+   * selector's list is this plus the configured `pageSize`.
+   */
+  private suppliedPageSizes: number[] | undefined;
+  /** Rows the body has room for, as last measured by the renderer (`paginationAutoPageSize`). */
+  private pageCapacity: number | null = null;
+  private warnedAutoPageSizeOverride = false;
 
   private filters: FilterModel = new FilterModel();
   private sorts: SortModel = new SortModel();
@@ -322,6 +330,7 @@ export class GridCore implements IGridCore {
     this.paginationEnabled = this.options.pagination;
     this.pageEndIdx = this.options.pageSize;
     this.pageSizes = this.options.pageSizes;
+    this.suppliedPageSizes = options.pageSizes;
     const qf = resolveQuickFilterOptions(this.options.quickFilter);
     this.quickFilterMatchMode = qf.matchMode;
     this.quickFilterCaseSensitive = qf.caseSensitive;
@@ -426,14 +435,15 @@ export class GridCore implements IGridCore {
     this.on("bodyScroll", (ev) => o.onBodyScroll?.(ev));
   }
 
-  private initializeGridOptions(options: GridOptions): InternalGridOptions {
-    const pageSize = options.pageSize ?? 100;
-    // Normalize pageSizes and make sure the configured pageSize is offered by the page-size
-    // selector — a <select> assigned a value with no matching option renders blank, and the
-    // configured size would become unreachable after the user's first change.
-    const pageSizes = validatePageSizes(options.pageSizes ?? [25, 50, 100], [25, 50, 100]);
+  /**
+   * Normalize `pageSizes` and make sure `pageSize` is offered by the page-size selector — a
+   * <select> assigned a value with no matching option renders blank, and the configured size would
+   * become unreachable after the user's first change. Warns only when the caller supplied the list.
+   */
+  private static resolvePageSizes(pageSize: number, supplied: number[] | undefined, warn = true): number[] {
+    const pageSizes = validatePageSizes(supplied ?? [25, 50, 100], [25, 50, 100]);
     if (!pageSizes.includes(pageSize)) {
-      if (options.pageSizes != null) {
+      if (supplied != null && warn) {
         console.warn(
           `pageSize ${pageSize} is not one of pageSizes [${pageSizes.join(", ")}]; adding it to the page-size options.`,
         );
@@ -441,6 +451,12 @@ export class GridCore implements IGridCore {
       pageSizes.push(pageSize);
       pageSizes.sort((a, b) => a - b);
     }
+    return pageSizes;
+  }
+
+  private initializeGridOptions(options: GridOptions): InternalGridOptions {
+    const pageSize = options.pageSize ?? 100;
+    const pageSizes = GridCore.resolvePageSizes(pageSize, options.pageSizes);
     // Diffing keys rows by id, so without a stable one every replacement row would mint a fresh id
     // and the diff would degrade to "remove all, add all". "auto" falls back silently — the caller
     // did not ask for diffing — but an explicit request that cannot be honoured is worth saying.
@@ -549,6 +565,7 @@ export class GridCore implements IGridCore {
       resetPageOn: options.resetPageOn ?? [],
       pageSize,
       pageSizes,
+      paginationAutoPageSize: options.paginationAutoPageSize === true,
       serverSideBlockSize: options.serverSideBlockSize ?? options.pageSize ?? 100,
       serverSideMaxBlocks: options.serverSideMaxBlocks,
       aggFuncs: options.aggFuncs ?? {},
@@ -1174,6 +1191,8 @@ export class GridCore implements IGridCore {
   autosizeColumn(colID: string): string[] {
     const col = this.columnModel.resolve(colID);
     if (!col) return [];
+    // An explicit fit-to-content fixes a flex column at its content width (AG Grid's rule).
+    this.columnModel.clearFlex([col]);
     if (col.children.length > 0) {
       this.autosizeParentColumn(col);
       return col.getVisibleLeaves().map(c => c.instanceID);
@@ -2733,11 +2752,105 @@ export class GridCore implements IGridCore {
   }
 
   applyPagination(pageIdx: number, pageSize: number, enabled: boolean = this.paginationEnabled) {
+    // Auto page size owns the size: whatever a caller (the footer, setPagination, a restored state)
+    // passes, the page holds the rows that fit the body once that is measured.
+    if (this.options.paginationAutoPageSize && this.pageCapacity != null && pageSize !== this.pageCapacity) {
+      const firstRow = pageIdx * pageSize;
+      pageSize = this.pageCapacity;
+      pageIdx = Math.floor(firstRow / pageSize);
+    }
     this.paginationEnabled = enabled;
     this.pageStartIdx = pageIdx * pageSize;
     this.pageEndIdx = this.pageStartIdx + pageSize;
     const loadRange = this.getInitialServerSideLoadRange();
     this.applyRowModelRequest(() => this.createRowModelRequest("pagination", { start: this.pageStartIdx, end: this.pageEndIdx }, loadRange, enabled));
+  }
+
+  /**
+   * Live `pageSize` / `pageSizes` / `paginationAutoPageSize` (`updateGridOptions`). Presence-based:
+   * a supplied key — even `undefined`, which restores the default — replaces that option; omitted
+   * keys keep theirs. A new page size re-pages from the first page, exactly as `api.setPageSize`
+   * does; the size already in force changes nothing. A changed selector list or auto mode alone
+   * re-announces `paginationChanged` so the footer rebuilds.
+   */
+  setPageSizeOptions(options: Pick<GridOptions, "pageSize" | "pageSizes" | "paginationAutoPageSize">): void {
+    const has = (key: string) => Object.prototype.hasOwnProperty.call(options, key);
+    const current = this.getPaginationInfo();
+    const wasAuto = this.options.paginationAutoPageSize;
+    if (has("paginationAutoPageSize")) this.options.paginationAutoPageSize = options.paginationAutoPageSize === true;
+    const auto = this.options.paginationAutoPageSize;
+
+    let requested: number | undefined;
+    if (has("pageSize")) {
+      const next = options.pageSize ?? 100;
+      if (!Number.isInteger(next) || next <= 0) {
+        console.warn(`pageSize must be a positive integer; got ${options.pageSize}. Ignoring.`);
+      } else {
+        this.options.pageSize = next;
+        if (auto) {
+          if (next !== current.pageSize) this.warnAutoPageSizeOverride("pageSize");
+        } else {
+          requested = next;
+        }
+      }
+    }
+    // Leaving auto mode hands the page back to the configured size.
+    if (wasAuto && !auto && requested === undefined) requested = this.options.pageSize;
+
+    const previousSizes = this.pageSizes;
+    if (has("pageSizes")) this.suppliedPageSizes = options.pageSizes ?? undefined;
+    if (has("pageSizes") || requested !== undefined) {
+      // The size the selector must offer: the one about to be in force (auto mode hides the
+      // selector, so its list keeps the configured size rather than the measured one).
+      const offered = requested ?? (auto ? this.options.pageSize : current.pageSize);
+      // Warn about a missing size only for a list supplied in this very update.
+      this.pageSizes = GridCore.resolvePageSizes(offered, this.suppliedPageSizes, has("pageSizes"));
+      this.options.pageSizes = this.pageSizes;
+    }
+    const sizesChanged = previousSizes.length !== this.pageSizes.length
+      || previousSizes.some((size, i) => size !== this.pageSizes[i]);
+
+    if (auto && !wasAuto && this.pageCapacity != null && this.pageCapacity !== current.pageSize) {
+      this.applyAutoPageSize();
+      return;
+    }
+    if (requested !== undefined && requested !== current.pageSize) {
+      this.applyPagination(0, requested, current.paginationEnabled);
+      return;
+    }
+    if (sizesChanged || auto !== wasAuto) this.emit("paginationChanged", this.getPaginationInfo());
+  }
+
+  /**
+   * The body's height in px, reported by the renderer whenever it changes. Under
+   * `paginationAutoPageSize` it decides the page size: the rows of the grid-wide `rowHeight` that
+   * fit, at least one. Only a change in that row count re-pages.
+   */
+  setPageViewportHeight(heightPx: number): void {
+    if (!(heightPx > 0)) return;
+    const capacity = Math.max(1, Math.floor(heightPx / Math.max(1, this.options.rowHeight)));
+    if (capacity === this.pageCapacity) return;
+    this.pageCapacity = capacity;
+    this.applyAutoPageSize();
+  }
+
+  /** Re-page to the measured capacity, keeping the current page's first row on the new page. */
+  private applyAutoPageSize(): void {
+    if (!this.options.paginationAutoPageSize || this.pageCapacity == null) return;
+    const { pageSize, pageIndex, paginationEnabled } = this.getPaginationInfo();
+    if (pageSize === this.pageCapacity) return;
+    this.applyPagination(pageIndex, pageSize, paginationEnabled);
+  }
+
+  isPaginationAutoPageSize(): boolean {
+    return this.options.paginationAutoPageSize;
+  }
+
+  /** Once per grid: a page size asked for while `paginationAutoPageSize` owns it. */
+  warnAutoPageSizeOverride(source: string): void {
+    if (this.warnedAutoPageSizeOverride) return;
+    this.warnedAutoPageSizeOverride = true;
+    console.warn(`${source} is ignored while paginationAutoPageSize is on: the page holds the rows that fit the body.`);
   }
 
   refreshRows(reason: RowDataChangeReason = "refresh", range: { start: number; end: number } = { start: this.pageStartIdx, end: this.pageEndIdx }) {
@@ -3741,14 +3854,45 @@ export class GridCore implements IGridCore {
 
   // columnWidthsChanged payload from instance ids (empty stays empty = "all visible columns").
   // `final` is false only for the intermediate moves of a resize-handle drag.
+  //
+  // Every core width event is built here right before it is emitted, so this is also where the
+  // flex layout (`ColDef.flex`) follows the change: a non-flex width that moved changes what the
+  // flex columns share, and the columns it re-sized ride along in the same event.
   private widthsChangedPayload(instanceIds: string[], final = true): GridEventMap["columnWidthsChanged"] {
-    const pair = this.eventColIds(instanceIds.map(id => this.columnModel.getById(id)));
+    const flexed = this.columnModel.applyFlexLayout();
+    const ids = instanceIds.length > 0 && flexed.length > 0 ? [...new Set([...instanceIds, ...flexed])] : instanceIds;
+    if (flexed.length > 0 && this.columnResizeDragChanged) for (const id of flexed) this.columnResizeDragChanged.add(id);
+    const pair = this.eventColIds(ids.map(id => this.columnModel.getById(id)));
     return { changedColIds: pair.colIds, changedColInstanceIds: pair.colInstanceIds, final, source: this.columnChangeSource };
   }
 
-  // Every columnsChanged goes through here so none can miss its `source`.
+  // Every columnsChanged goes through here so none can miss its `source`. A column change can
+  // change what flex columns share (visibility, pinning, a new def, a group expanding), so the flex
+  // layout is re-run first — the listeners lay out the settled widths — and, when it moved any,
+  // announced with one `columnWidthsChanged` after.
   private emitColumnsChanged(params: Omit<GridEventColumnsChangedParams, "source">): void {
+    const flexed = this.columnModel.applyFlexLayout();
     this.emit("columnsChanged", { ...params, source: this.columnChangeSource });
+    if (flexed.length > 0) this.emit("columnWidthsChanged", this.widthsChangedPayload(flexed));
+  }
+
+  /**
+   * The centre viewport width flex columns share, as the renderer measures it after every width
+   * pass and on every resize (scrollbar gutter included). A changed width re-lays the flex columns
+   * out and emits one `columnWidthsChanged` (`final: true`) when that moved any.
+   */
+  setFlexViewportWidth(widthPx: number): void {
+    if (!this.columnModel.setFlexViewportWidth(widthPx)) return;
+    const flexed = this.columnModel.applyFlexLayout();
+    if (flexed.length > 0) this.emit("columnWidthsChanged", this.widthsChangedPayload(flexed));
+  }
+
+  /**
+   * Re-run the flex layout after a width change made outside the core's own paths (the API's
+   * width batches). Returns the instance ids of the flex leaves it re-sized.
+   */
+  applyFlexLayout(): string[] {
+    return this.columnModel.applyFlexLayout();
   }
 
   /**
@@ -4238,7 +4382,10 @@ export class GridCore implements IGridCore {
           this.emit("columnWidthsChanged", this.widthsChangedPayload(autosizedColIds));
         }
         break;
-      case "columnResize":
+      case "columnResize": {
+        // An explicit resize fixes a flex column at the width it is given (AG Grid's rule).
+        const resizeTarget = this.columnModel.resolve(action.colId);
+        if (resizeTarget && !resizeTarget.isLeadingUtilityColumn()) this.columnModel.clearFlex([resizeTarget]);
         const resizedColIds = this.columnModel.resizeColumn(action.colId, action.widthPx);
         if (resizedColIds.length > 0) {
           const dragChanged = this.columnResizeDragChanged;
@@ -4246,6 +4393,7 @@ export class GridCore implements IGridCore {
           this.emit("columnWidthsChanged", this.widthsChangedPayload(resizedColIds, dragChanged == null));
         }
         break;
+      }
       case "sortModelSet":
         this.setSortModel(action.sortItems);
         break;

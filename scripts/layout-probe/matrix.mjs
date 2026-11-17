@@ -31,6 +31,13 @@ export const CASES = [
   { name: "checkboxes-unpinned", config: { pinned: "left", checkboxes: "unpinned" } },
   { name: "aggregates", config: { pinned: "both", aggregates: true }, sequences: ["scrolled", "headerHeight"] },
   { name: "pagination", config: { pinned: "both", pagination: true } },
+  // paginationAutoPageSize: at every width and height the page is exactly the rows that fit the
+  // body — no vertical scrollbar, and less than one row of room left (auto-page-* checks).
+  {
+    name: "pagination-auto-page-size",
+    config: { pinned: "both", pagination: true, autoPageSize: true, toolbar: true },
+    sequences: ["growTall"],
+  },
   { name: "pinned-rows", config: { pinned: "both", pinnedRows: "both" }, sequences: ["scrolled", "bodyScroll", "hiddenMount", "growTall"] },
   {
     name: "kitchen",
@@ -146,4 +153,25 @@ export const CASES = [
     // The kitchen case's chrome, mirrored: same A3.14 known entry.
     known: [{ steps: /^(height@(320|180)|growTall@300)$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
   },
+  // ColDef.flex (#25): Account/Owner/Notes share the centre width the fixed columns leave. Down the
+  // ladder the centre shrinks until the flex mins no longer fit and it scrolls; flex-gap /
+  // flex-overflow check that whenever they fit the columns fill the centre exactly. The sequences
+  // move the vertical scrollbar's gutter (few rows → growTall), the pinned sections (pinToggle pins
+  // a flex column), the visible set (hideToggle) and the header fonts (themeSwap).
+  {
+    name: "flex",
+    config: { flex: true },
+    sequences: ["pinToggle", "hideToggle", "themeSwap", "hiddenMount", "window", "growTall"],
+  },
+  {
+    name: "flex-both",
+    config: { flex: true, pinned: "both", aggregates: true, pinnedRows: "both" },
+    sequences: ["scrolled", "pinToggle", "window"],
+    // Header + three pinned rows + aggregate row + footer outgrow a 180px root: A3.14, as in kitchen.
+    known: [{ steps: /^height@180$/, ids: ["stack-overflow", "body-collapsed", "root-overflow"], reason: "A3.14 fixed chrome taller than the root" }],
+  },
+  { name: "flex-few-rows", config: { flex: true, pinned: "left", rows: 5 }, sequences: ["growTall"] },
+  { name: "flex-groups2", config: { flex: true, columns: "groups2", pinned: "left", floatingFilter: true }, sequences: ["groupToggle", "hideToggle"] },
+  { name: "flex-huge", config: { flex: true, columns: "huge", pinned: "both" }, sequences: ["scrolled"] },
+  { name: "rtl-flex", config: { flex: true, pinned: "both", rtl: true }, sequences: ["pinToggle", "hideToggle", "window"] },
 ];

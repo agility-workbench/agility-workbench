@@ -1,6 +1,7 @@
 import { FormatterOptions, FormatterOptionsParams, getFormatterByType, resolveFormatterOptions, ValueFormatterParams, ValueParserParams } from "./formatters";
 import { parseTextByType } from "./parsers";
 import { readKeyPath } from "./keyPath";
+import { normalizeFlex } from "./flexColumns";
 import { isFalse, isNullOrUndefined, isTrue } from "../misc";
 import { CellRenderer } from "../renderer/renderer";
 import { builtInRendererShowsNoText, resolveCellRendererAlias } from "../cellRenderers/aliases";
@@ -41,6 +42,12 @@ export class Column {
   // so a hand-sized column survives grouping/move/aggregate/data-refresh recomputes. Cleared by an
   // explicit "fit to content" autosize. Undefined until the user actually drags a resize handle.
   resizedWidth?: number;
+  /** `ColDef.flex` as declared (normalized: a positive finite number, else undefined). */
+  declaredFlex?: number;
+  /** Runtime override of {@link declaredFlex}: `null` = flex turned off (a user resize/autosize,
+   * or `ColumnState.flex: null`), a number = set by `applyColumnState`, undefined = follow the
+   * def. Survives instance-reusing rebuilds like `resizedWidth`; a defs reset drops it. */
+  flexOverride?: number | null;
   valueGetter?: (row: any) => any;
   groupValueGetter?: (params: GroupValueGetterParams) => any;
   valueFormatter?: (params: ValueFormatterParams) => string;
@@ -178,6 +185,7 @@ export class Column {
   ) {
     const previousComputedWidth = this.computedWidth;
     const previousResizedWidth = this.resizedWidth;
+    const previousFlexOverride = this.flexOverride;
     const previousGroupExpandState = this.groupExpandState;
     const previousColumnGroupVisible = this.columnGroupVisible;
 
@@ -189,6 +197,7 @@ export class Column {
     this.width = col.width;
     this.minWidth = col.minWidth;
     this.maxWidth = col.maxWidth;
+    this.declaredFlex = normalizeFlex(col.flex);
     this.depth = col.depth || 0;
     this.valueGetter = col.valueGetter;
     this.groupValueGetter = col.groupValueGetter;
@@ -275,6 +284,7 @@ export class Column {
     // Preserve a prior user resize across rebuilds that reuse this instance (grouping/move); a full
     // reset (preserveRuntimeState=false, e.g. setColumnDefs/reset) drops it back to auto-sizing.
     this.resizedWidth = preserveRuntimeState ? previousResizedWidth : undefined;
+    this.flexOverride = preserveRuntimeState ? previousFlexOverride : undefined;
     if (preserveRuntimeState && this.resizedWidth != null) {
       this.computedWidth = this.resizedWidth;
     } else if (preserveRuntimeState && col.width == null) {
@@ -292,6 +302,14 @@ export class Column {
     if (this.maxWidth != null && isFinite(this.maxWidth)) {
       this.computedWidth = Math.min(this.computedWidth, this.maxWidth);
     }
+  }
+
+  /** The flex weight in effect (runtime override, else the def's), or undefined when not flexing.
+   * Whether it actually flexes also depends on the section: only centre leaves do. Never for the
+   * row-number / checkbox utility columns or a group. */
+  getFlex(): number | undefined {
+    if (this.children.length > 0 || this.isLeadingUtilityColumn()) return undefined;
+    return this.flexOverride !== undefined ? (this.flexOverride ?? undefined) : this.declaredFlex;
   }
 
   isVisible(): boolean {
@@ -505,6 +523,7 @@ export class Column {
     dup.columnGroupVisible = this.columnGroupVisible;
     dup.computedWidth = this.computedWidth;
     dup.resizedWidth = this.resizedWidth;
+    dup.flexOverride = this.flexOverride;
     dup.showExpander = this.showExpander;
     return dup;
   }

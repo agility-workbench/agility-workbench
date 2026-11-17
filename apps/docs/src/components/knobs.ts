@@ -70,12 +70,41 @@ export const featureKnobs: Partial<Record<DemoFeature, FeatureKnobs>> = {
   "client-side-data": {
     knobs: [
       { id: "pagination", label: "Pagination", kind: "toggle", default: true },
-      { id: "pageSize", label: "Page size", kind: "select", options: [{ value: "10" }, { value: "20" }, { value: "50" }], default: "10", structural: true },
+      { id: "pageSize", label: "Page size", kind: "select", options: [{ value: "10" }, { value: "20" }, { value: "50" }], default: "10" },
       { id: "rowNumbers", label: "Row numbers", kind: "toggle", default: true, structural: true },
     ],
     toProps: (v) => ({
       ...(bool(v.pagination) ? { pagination: true, pageSize: num(v.pageSize), pageSizes: [10, 20, 50] } : {}),
       ...onOff(v.rowNumbers, "rowNumbers"),
+    }),
+  },
+  pagination: {
+    knobs: [
+      { id: "autoPageSize", label: "Auto page size", kind: "toggle", default: false },
+      { id: "pageSize", label: "Page size", kind: "select", options: [{ value: "10" }, { value: "25" }, { value: "50" }], default: "10" },
+      { id: "pageSelection", label: "Page picker", kind: "select", options: [{ value: "select" }, { value: "buttons" }], default: "select" },
+      { id: "rowSummary", label: "Row summary", kind: "toggle", default: true },
+      { id: "pageInput", label: "Go to page", kind: "toggle", default: true },
+    ],
+    toProps: (v) => ({
+      pagination: true,
+      // Auto page size owns the size; pageSize would be ignored (with a warning), so it is left out.
+      ...(bool(v.autoPageSize)
+        ? { paginationAutoPageSize: true }
+        : { pageSize: num(v.pageSize), pageSizes: [10, 25, 50] }),
+      paginationControls: {
+        ...(str(v.pageSelection) === "buttons" ? { pageSelection: "buttons" } : {}),
+        controls: [
+          ...(bool(v.rowSummary) ? ["rowSummary"] : []),
+          "pageSize",
+          "firstPage",
+          "previousPage",
+          "pageSelector",
+          ...(bool(v.pageInput) ? ["pageInput"] : []),
+          "nextPage",
+          "lastPage",
+        ],
+      },
     }),
   },
   "server-side-data": {

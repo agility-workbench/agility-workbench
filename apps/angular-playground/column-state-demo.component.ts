@@ -73,6 +73,7 @@ function buildRows(count: number): ProductRow[] {
       <button class="btn" type="button" (click)="moveSupplierFirst()">Supplier → first (order:0)</button>
       <button class="btn" type="button" (click)="pinCategoryNoOrder()">Pin category (no order)</button>
       <button class="btn" type="button" (click)="addNotesColumn()" [disabled]="notesAdded()">Add "Notes" column</button>
+      <button class="btn" type="button" (click)="toggleFlex()">Toggle flex (name 2, supplier 1)</button>
     </div>
 
     <div class="cs-status">{{ status() }}</div>
@@ -98,6 +99,7 @@ function buildRows(count: number): ProductRow[] {
                   <th>colId</th>
                   <th>order</th>
                   <th>w</th>
+                  <th>flex</th>
                   <th>pin</th>
                   <th class="cs-last">hidden</th>
                 </tr>
@@ -108,6 +110,7 @@ function buildRows(count: number): ProductRow[] {
                     <td class="cs-colid">{{ s.colId }}</td>
                     <td>{{ s.order }}</td>
                     <td>{{ s.widthPx != null ? round(s.widthPx) : "—" }}</td>
+                    <td>{{ s.flex ?? "—" }}</td>
                     <td>{{ s.pinned ?? "—" }}</td>
                     <td class="cs-last">{{ s.hidden ? "yes" : "—" }}</td>
                   </tr>
@@ -288,6 +291,19 @@ export class ColumnStateDemoComponent {
     if (!api) return;
     api.applyColumnState([{ colId: "category", pinned: "left" }]);
     this.status.set("Applied { colId: 'category', pinned: 'left' } with no order — no positional jump.");
+  }
+
+  // Turn `flex` on for Name (2) and Supplier (1) through column state, or off again (`flex: null`).
+  toggleFlex(): void {
+    const api = this.api;
+    if (!api) return;
+    const on = api.getColumnState().some((s) => s.colId === "name" && s.flex != null);
+    api.applyColumnState(on
+      ? [{ colId: "name", flex: null }, { colId: "supplier", flex: null }]
+      : [{ colId: "name", flex: 2 }, { colId: "supplier", flex: 1 }]);
+    this.status.set(on
+      ? "Applied { flex: null } — Name and Supplier are fixed at their current widths."
+      : "Applied { flex: 2 } / { flex: 1 } — Name and Supplier share the free centre width; resize the window.");
   }
 
   // Add a transient column at runtime so "Restore (exact)" has something new to hide.

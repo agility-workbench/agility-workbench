@@ -676,7 +676,19 @@ export type PaginationControl =
   | "previousPage"
   | "pageSelector"
   | "nextPage"
-  | "lastPage";
+  | "lastPage"
+  /**
+   * Opt-in: the range of rows on the page and the total — "1–100 of 1,234" — read out politely to
+   * screen readers when it changes. While a server-side total is still provisional it says so
+   * ("1–100 of more than 300"). Locale keys `paginationRowSummary`, `paginationRowSummaryUnknownTotal`
+   * and `paginationRowSummaryEmpty`.
+   */
+  | "rowSummary"
+  /**
+   * Opt-in: a "Go to page" number field. Enter or leaving the field commits; the page is clamped
+   * to the known range and anything that is not a number reverts. Locale key `goToPage`.
+   */
+  | "pageInput";
 
 export type PaginationPageSelection = "select" | "buttons";
 
@@ -749,7 +761,13 @@ export const DEFAULT_PAGINATION_CONTROLS: readonly PaginationControl[] = [
   "lastPage",
 ];
 
-const PAGINATION_CONTROL_SET = new Set<PaginationControl>(DEFAULT_PAGINATION_CONTROLS);
+/** Controls a layout may name but the default one leaves out (a new control is never a default-footer change). */
+const OPT_IN_PAGINATION_CONTROLS: readonly PaginationControl[] = ["rowSummary", "pageInput"];
+
+const PAGINATION_CONTROL_SET = new Set<PaginationControl>([
+  ...DEFAULT_PAGINATION_CONTROLS,
+  ...OPT_IN_PAGINATION_CONTROLS,
+]);
 
 export function resolvePaginationControlsOptions(
   options?: PaginationControlsOptions,
@@ -1758,8 +1776,26 @@ export interface GridOptions<TData = any> {
    * "sort" to restore jump-to-page-1 for that trigger.
    */
   resetPageOn?: ResetPageTrigger[];
+  /**
+   * Rows per page. Defaults to 100. Updatable: a new value re-pages the rows and returns to the
+   * first page (as `api.setPageSize` does); passing the size already in force changes nothing.
+   * A size missing from {@link pageSizes} is added to the selector. Ignored while
+   * {@link paginationAutoPageSize} is on.
+   */
   pageSize?: number;
+  /**
+   * The sizes the footer's rows-per-page selector offers. Defaults to `[25, 50, 100]`. Updatable;
+   * the current page size is always offered.
+   */
   pageSizes?: number[];
+  /**
+   * Size each page to the rows that fit the body: `floor(body height / rowHeight)`, at least 1,
+   * recomputed whenever the body changes height. With `getRowHeight` the grid-wide `rowHeight` is
+   * used, so variable-height rows may not fill (or may overflow) the body exactly. While it is on
+   * the footer's rows-per-page selector is hidden and `pageSize` / `api.setPageSize` are ignored.
+   * A resize keeps the page's first row on the new page. Defaults to false. Updatable.
+   */
+  paginationAutoPageSize?: boolean;
   serverSideBlockSize?: number;
   /**
    * Server-side row model: the most row blocks kept in memory. Blocks beyond that are evicted
@@ -2272,6 +2308,7 @@ export interface InternalGridOptions extends GridOptions {
   resetPageOn: ResetPageTrigger[];
   pageSize: number;
   pageSizes: number[];
+  paginationAutoPageSize: boolean;
   serverSideBlockSize: number;
   serverSideMaxBlocks?: number;
   aggFuncs: Record<string, AggregateFunction>;
@@ -2390,6 +2427,9 @@ export const WIDGET_OPTION_KEYS = [
   "sheets",
   "pagination",
   "paginationControls",
+  "pageSize",
+  "pageSizes",
+  "paginationAutoPageSize",
   "rowSelection",
   "theme",
   "icons",
@@ -2486,7 +2526,7 @@ const ALL_GRID_OPTION_KEYS: { readonly [K in keyof Required<GridOptions>]: true 
   floatingFilter: true, clipboard: true,
   showColumnButtonsOnHover: true, bodyContextMenu: true, multiColumnMenu: true,
   selectAllRowsOnHeaderClick: true, selectAllScope: true, selectionPersistence: true,
-  resetPageOn: true, pageSize: true, pageSizes: true, serverSideBlockSize: true,
+  resetPageOn: true, pageSize: true, pageSizes: true, paginationAutoPageSize: true, serverSideBlockSize: true,
   serverSideMaxBlocks: true, aggFuncs: true, groupSelectsChildren: true,
   rowModelType: true, serverSideDataSource: true, serverSideAggregationSource: true,
   getGroupChildCount: true, groupChildCount: true, groupTotalRow: true, grandTotalRow: true,

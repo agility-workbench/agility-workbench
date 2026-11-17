@@ -544,6 +544,10 @@ export class GridRenderer {
       onVerticalScrollbarVisibilityChanged: (visible) => {
         this._columnLayoutRenderer?.setVerticalScrollbarVisible(visible);
         this._pinnedRowsRenderer?.setBodyVerticalScrollbarVisible(visible);
+        // The scrollbar's gutter came out of (or went back to) the centre without resizing the body,
+        // so no ResizeObserver reports it. Deferred past the view pass that noticed it — a width pass
+        // from inside recomputeView would re-enter it — but still before the frame paints.
+        this._scheduleFlexViewportSync();
       },
     });
     const bodyWrapper = this._bodyViewportRenderer.getRefs();
@@ -848,6 +852,7 @@ export class GridRenderer {
         this._bodyWindowRenderer?.refreshFullWidthWidths();
         this._actionFrameRenderer?.onWindowUpdate();
       },
+      syncFlexViewport: () => this._syncFlexViewport(),
     });
     this._pinnedSectionLayoutRenderer = new PinnedSectionLayoutRenderer({
       root: this.root,
@@ -874,6 +879,10 @@ export class GridRenderer {
         // here, the first time it has a size — i.e. once it is in a document.
         void this.rtl;
         this._columnLayoutRenderer.updateScrollStrip();
+        // paginationAutoPageSize sizes pages from the body's height (the strip has just settled
+        // it). The footer's own height does not depend on the page size, so re-paging here cannot
+        // feed back into another resize; the core re-pages only when the row count that fits moves.
+        this.core.setPageViewportHeight(bodyWrapper.body.clientHeight);
         this._bodyViewportRenderer.recomputeView();
         // Before the core's first viewportChanged there is no pool to resize; that event sizes it.
         if (this._poolSize > 0) this._maybeUpdatePoolSize();
@@ -882,6 +891,9 @@ export class GridRenderer {
         this._bodyWindowRenderer?.refreshFullWidthWidths();
         this._pinnedRowsRenderer.updateLayout();
         this._actionFrameRenderer?.onWindowUpdate();
+        // Last: a wider or narrower centre re-shares the flex columns (a no-op without any), and
+        // the width pass that starts runs every step above again over the new widths.
+        this._syncFlexViewport();
       },
     });
     this._scrollSyncRenderer = new GridScrollSyncRenderer({
@@ -1155,6 +1167,49 @@ export class GridRenderer {
 
   detach() {
     this._rootAttachmentRenderer.detach();
+  }
+
+  private _flexSyncing = false;
+  private _flexSyncScheduled = false;
+  private _destroyedForFlex = false;
+
+  /**
+   * Report the centre viewport width to the core for `ColDef.flex` columns (core re-shares them and,
+   * when a width moved, emits the `columnWidthsChanged` whose width pass calls back in here). Read
+   * only while a centre column has a flex weight, so grids without flex never force a layout read
+   * for it. Re-entrant calls from that nested pass are dropped; instead the outer call re-reads the
+   * width until it stops moving (the pass can toggle the scrollbar strip, and with it the vertical
+   * scrollbar's gutter). Bounded, so a layout that never settles cannot spin.
+   */
+  private _syncFlexViewport(): void {
+    if (this._flexSyncing || this._destroyedForFlex || !this.core) return;
+    const model = this.core.getColumnModel();
+    if (!model.getCenterLeaves().some(col => col.getFlex() != null)) return;
+    const spacer = this._bodyViewportRenderer?.getRefs().centerSpacer;
+    if (!spacer) return;
+    this._flexSyncing = true;
+    try {
+      for (let i = 0; i < 3; i++) {
+        const before = model.getCenterLeaves().map(col => col.computedWidth).join();
+        // clientWidth ROUNDS a fractional box (a 812.5px centre reads 813), and a flex layout one
+        // pixel wider than the box overflows it by half a pixel: floor the real width instead.
+        const rectWidth = spacer.getBoundingClientRect().width;
+        const width = rectWidth > 0 ? Math.min(spacer.clientWidth, Math.floor(rectWidth)) : spacer.clientWidth;
+        this.core.setFlexViewportWidth(width);
+        if (model.getCenterLeaves().map(col => col.computedWidth).join() === before) break;
+      }
+    } finally {
+      this._flexSyncing = false;
+    }
+  }
+
+  private _scheduleFlexViewportSync(): void {
+    if (this._flexSyncScheduled) return;
+    this._flexSyncScheduled = true;
+    queueMicrotask(() => {
+      this._flexSyncScheduled = false;
+      this._syncFlexViewport();
+    });
   }
 
   _maybeUpdatePoolSize(params?: GridEventViewportChangedParams) {
@@ -1881,6 +1936,8 @@ export class GridRenderer {
   }
 
   destroy() {
+    // A flex sync queued for after the current view pass must not touch a torn-down grid.
+    this._destroyedForFlex = true;
     (document as Document & { fonts?: FontFaceSet }).fonts?.removeEventListener?.("loadingdone", this._onFontsLoaded);
     if (this._keyboardNavigationAnnouncementTimer) {
       clearTimeout(this._keyboardNavigationAnnouncementTimer);

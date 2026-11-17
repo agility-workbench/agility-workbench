@@ -10,6 +10,7 @@ import { isNullOrUndefined } from "../misc";
 import { resolveLocaleText } from "../interfaces/locale";
 import { ColumnMove } from "./columnMove";
 import { isTreeAggregateCell } from "../core/groupCellValue";
+import { distributeFlexWidths, normalizeFlex } from "./flexColumns";
 
 interface BaselineWidthDef {
   width: number;
@@ -158,6 +159,11 @@ export class ColumnModel implements IColumnModel {
   private _leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }> = new Map();
 
   private baselineWidths: Map<string, BaselineWidthDef> = new Map();
+
+  // The centre viewport width flex columns are laid out against (`ColDef.flex`), as the renderer
+  // last measured it; 0 until it has measured one (detached, SSR, tests without layout), and flex
+  // columns are then sized like any other column.
+  private flexViewportWidth = 0;
 
   constructor(private options: InternalGridOptions) { }
 
@@ -1196,6 +1202,9 @@ export class ColumnModel implements IColumnModel {
     rows: IRowNode[],
     opts?: { honourDeclaredWidth?: boolean },
   ): void {
+    // A flexing column's width is the flex layout's (applyFlexLayout, re-run after every pass
+    // that sizes columns): content measurement would only be overwritten.
+    if (this.isFlexing(col)) return;
     // A user-set width wins over content measurement so hand-sized columns don't snap back on the
     // implicit recomputes triggered by column-state actions. Explicit "fit to content" clears this.
     if (col.resizedWidth != null) {
@@ -1267,6 +1276,78 @@ export class ColumnModel implements IColumnModel {
   private cellValueForWidth(col: Column, row: IRowNode): any {
     if (row.isGroup || isTreeAggregateCell(col, row)) return row.aggregateValues?.[col.instanceID];
     return col.getValue(row);
+  }
+
+  /**
+   * Record the centre viewport width flex columns share. Returns whether it changed; the caller
+   * then re-runs {@link applyFlexLayout}. Non-positive / non-finite widths (an unlaid-out grid) are
+   * ignored, keeping the last real measurement.
+   */
+  setFlexViewportWidth(width: number): boolean {
+    if (!Number.isFinite(width) || width <= 0) return false;
+    const next = Math.floor(width);
+    if (next === this.flexViewportWidth) return false;
+    this.flexViewportWidth = next;
+    return true;
+  }
+
+  getFlexViewportWidth(): number {
+    return this.flexViewportWidth;
+  }
+
+  /** Whether this column's width is currently decided by the flex layout: a visible centre leaf
+   * with a flex weight, once a viewport width is known. */
+  isFlexing(col: Column): boolean {
+    if (this.flexViewportWidth <= 0 || col.getFlex() == null || !col.isVisible()) return false;
+    return this.centerLeaves.includes(col);
+  }
+
+  /**
+   * Lay the flex columns of the centre section out against the recorded viewport width: they share
+   * what the visible non-flex centre leaves leave over, by flex weight, within each one's bounds
+   * (`minWidth` floored by `minResizeWidth`, and `maxWidth` — the bounds the resize path clamps an
+   * explicit width to; `maxColumnWidth` caps auto-sizing only, so it does not apply). Group widths
+   * are rolled up after. Returns the instance ids of the leaves whose width changed (none when no
+   * viewport is known or nothing flexes).
+   */
+  applyFlexLayout(): string[] {
+    const available = this.flexViewportWidth;
+    if (available <= 0) return [];
+    const visible = this.centerLeaves.filter(col => col.isVisible());
+    const flexing = visible.filter(col => col.getFlex() != null);
+    if (flexing.length === 0) return [];
+    let fixed = 0;
+    for (const col of visible) if (col.getFlex() == null) fixed += col.computedWidth;
+    const gridMin = this.options.minResizeWidth;
+    const widths = distributeFlexWidths(available - fixed, flexing.map(col => ({
+      flex: col.getFlex()!,
+      min: Math.max(gridMin, col.minWidth != null && Number.isFinite(col.minWidth) ? col.minWidth : gridMin),
+      max: col.maxWidth != null && Number.isFinite(col.maxWidth) ? col.maxWidth : Infinity,
+    })));
+    const changed: string[] = [];
+    flexing.forEach((col, i) => {
+      if (col.computedWidth === widths[i]) return;
+      col.computedWidth = widths[i];
+      changed.push(col.instanceID);
+    });
+    if (changed.length > 0) this.updateParentColumnWidthsForAll();
+    return changed;
+  }
+
+  /**
+   * Turn flex off for these columns' leaves (an explicit resize / auto-size makes a column fixed,
+   * the way AG Grid does): visible leaves of a group. Returns whether any leaf had a flex weight.
+   */
+  clearFlex(cols: Iterable<Column>): boolean {
+    let cleared = false;
+    for (const col of cols) {
+      for (const leaf of col.children.length > 0 ? col.getVisibleLeaves() : [col]) {
+        if (leaf.getFlex() == null) continue;
+        leaf.flexOverride = null;
+        cleared = true;
+      }
+    }
+    return cleared;
   }
 
   updateParentColumnWidth(col: Column): void {
@@ -1406,6 +1487,7 @@ export class ColumnModel implements IColumnModel {
         state.push({
           colId: col.colId,
           widthPx: col.computedWidth,
+          flex: col.getFlex() ?? null,
           pinned: col.pinned,
           hidden: col.hidden,
           order: order++,
@@ -1429,6 +1511,7 @@ export class ColumnModel implements IColumnModel {
       state.push({
         colId: col.colId,
         widthPx: col.computedWidth,
+        flex: col.getFlex() ?? null,
         pinned: col.pinned,
         hidden: col.hidden,
         order: order++,
@@ -1454,7 +1537,7 @@ export class ColumnModel implements IColumnModel {
    * `opts.defaultState` changes how columns ABSENT from `state` are treated — this is what turns a
    * merge into an exact restore. It is applied to every current column not referenced by `state`
    * (new columns added since the state was captured, or ones deliberately omitted). Only `hidden`,
-   * `pinned`, and `widthPx` are honored; `colId` / `order` / `selected` are ignored. The most common
+   * `pinned`, `widthPx` and `flex` are honored; `colId` / `order` / `selected` are ignored. The most common
    * use is `{ hidden: true }` — "show exactly the saved view, hide everything else". With no
    * `defaultState`, absent columns are left untouched (the merge default).
    *
@@ -1462,7 +1545,9 @@ export class ColumnModel implements IColumnModel {
    *  - visibility → `col.hidden`, applied before the rebuild;
    *  - pinning → `col.pinned` (top-level columns only), bucketed by `updateColumns`;
    *  - order → columns repositioned among siblings at every group depth (see above);
-   *  - width → `resizeColumn` (stamped as `resizedWidth` so it survives later autosize recomputes).
+   *  - width → `resizeColumn` (stamped as `resizedWidth` so it survives later autosize recomputes);
+   *    skipped for a column that flexes after the apply;
+   *  - flex → `col.flexOverride` (the core re-runs the flex layout when it announces the change).
    *
    * While pivot display is active this restores the STASHED SOURCE columns — the mirror of
    * `getColumnState`, which captures them. The displayed generated layout is derived data: it is
@@ -1485,7 +1570,20 @@ export class ColumnModel implements IColumnModel {
       // Pinning is a section property; only meaningful for a top-level column (a group pins as a
       // whole, and a lone leaf is its own top-level column).
       if (top === col && s.pinned !== undefined) col.pinned = s.pinned;
-      if (s.widthPx != null) widthOps.push({ col, width: s.widthPx });
+      if (s.flex !== undefined) {
+        const flex = normalizeFlex(s.flex);
+        if (flex != null) {
+          col.flexOverride = flex;
+          // Flex decides the width now; a stale manual width must not resurface if it is turned off.
+          col.resizedWidth = undefined;
+        } else if (col.getFlex() != null) {
+          col.flexOverride = null;
+          // Fixed where it stands unless the entry names a width (applied below).
+          if (s.widthPx == null) col.resizedWidth = col.computedWidth;
+        }
+      }
+      // A flexing column ignores a width: flex decides it (and resizeColumn would stamp it fixed).
+      if (s.widthPx != null && col.getFlex() == null) widthOps.push({ col, width: s.widthPx });
       seenTop.add(top);
       if (s.order != null) {
         for (const node of path.length > 0 ? path : [col]) {
@@ -1517,7 +1615,17 @@ export class ColumnModel implements IColumnModel {
         if (def.pinned !== undefined) top.pinned = def.pinned;
         for (const leaf of top.getLeaves()) {
           if (def.hidden != null) leaf.hidden = def.hidden;
-          if (def.widthPx != null) widthOps.push({ col: leaf, width: def.widthPx });
+          if (def.flex !== undefined) {
+            const flex = normalizeFlex(def.flex);
+            if (flex != null) {
+              leaf.flexOverride = flex;
+              leaf.resizedWidth = undefined;
+            } else if (leaf.getFlex() != null) {
+              leaf.flexOverride = null;
+              if (def.widthPx == null) leaf.resizedWidth = leaf.computedWidth;
+            }
+          }
+          if (def.widthPx != null && leaf.getFlex() == null) widthOps.push({ col: leaf, width: def.widthPx });
         }
       }
     }

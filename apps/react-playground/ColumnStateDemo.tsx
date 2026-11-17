@@ -121,6 +121,19 @@ export function ColumnStateDemo() {
     setStatus("Applied { colId: 'category', pinned: 'left' } with no order — no positional jump.");
   };
 
+  // Turn `flex` on for Name (2) and Supplier (1) through column state, or off again (`flex: null`).
+  const toggleFlex = () => {
+    const api = apiRef.current;
+    if (!api) return;
+    const on = api.getColumnState().some((s) => s.colId === "name" && s.flex != null);
+    api.applyColumnState(on
+      ? [{ colId: "name", flex: null }, { colId: "supplier", flex: null }]
+      : [{ colId: "name", flex: 2 }, { colId: "supplier", flex: 1 }]);
+    setStatus(on
+      ? "Applied { flex: null } — Name and Supplier are fixed at their current widths."
+      : "Applied { flex: 2 } / { flex: 1 } — Name and Supplier share the free centre width; resize the window.");
+  };
+
   // Add a transient column at runtime so "Restore (exact)" has something new to hide.
   const addNotesColumn = () => {
     const api = apiRef.current;
@@ -141,6 +154,7 @@ export function ColumnStateDemo() {
         <button className="btn" type="button" onClick={moveSupplierFirst}>Supplier → first (order:0)</button>
         <button className="btn" type="button" onClick={pinCategoryNoOrder}>Pin category (no order)</button>
         <button className="btn" type="button" onClick={addNotesColumn} disabled={notesAdded}>Add "Notes" column</button>
+        <button className="btn" type="button" onClick={toggleFlex}>Toggle flex (name 2, supplier 1)</button>
       </div>
 
       <div style={{ fontSize: 13, color: "#374151" }}>{status}</div>
@@ -167,6 +181,7 @@ export function ColumnStateDemo() {
                     <th style={{ padding: "2px 6px 4px 0" }}>colId</th>
                     <th style={{ padding: "2px 6px 4px 0" }}>order</th>
                     <th style={{ padding: "2px 6px 4px 0" }}>w</th>
+                    <th style={{ padding: "2px 6px 4px 0" }}>flex</th>
                     <th style={{ padding: "2px 6px 4px 0" }}>pin</th>
                     <th style={{ padding: "2px 0 4px 0" }}>hidden</th>
                   </tr>
@@ -177,6 +192,7 @@ export function ColumnStateDemo() {
                       <td style={{ padding: "2px 6px 2px 0", fontWeight: 600 }}>{s.colId}</td>
                       <td style={{ padding: "2px 6px 2px 0" }}>{s.order}</td>
                       <td style={{ padding: "2px 6px 2px 0" }}>{s.widthPx != null ? Math.round(s.widthPx) : "—"}</td>
+                      <td style={{ padding: "2px 6px 2px 0" }}>{s.flex ?? "—"}</td>
                       <td style={{ padding: "2px 6px 2px 0" }}>{s.pinned ?? "—"}</td>
                       <td style={{ padding: "2px 0" }}>{s.hidden ? "yes" : "—"}</td>
                     </tr>

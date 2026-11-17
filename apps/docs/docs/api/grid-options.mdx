@@ -99,12 +99,13 @@ changing them does not remount the grid or replace its API instance.
 | `floatingFilter` | `boolean` | A row of filter controls under the column headers, one per filterable column (default `false`; runtime). See [Floating filters](../examples/filtering.mdx#floating-filters) |
 | `pagination` | `boolean` | Enable footer pagination |
 | `paginationControls` | `PaginationControlsOptions` | Page-picker style plus visible pagination controls and their order |
-| `pageSize` | `number` | Initial page size |
-| `pageSizes` | `number[]` | User-selectable page sizes |
+| `pageSize` | `number` | Rows per page (default 100; updatable at runtime — a new size returns to the first page, the size in force is a no-op) |
+| `pageSizes` | `number[]` | User-selectable page sizes (default `[25, 50, 100]`; updatable at runtime) |
+| `paginationAutoPageSize` | `boolean` | Size each page to the rows that fit the body, recomputed as the body resizes; hides the rows-per-page selector and overrides `pageSize` (default `false`; updatable at runtime). See [Auto page size](../examples/pagination.mdx#auto-page-size) |
 | `resetPageOn` | `("filter" \| "sort" \| "quickFilter")[]` | Model changes that jump back to page 1 (default `[]`) |
 
-`pageSizes` is normalized at init (sorted ascending, non-positive entries
-dropped). If `pageSize` is not in the list it is added automatically so the
+`pageSizes` is normalized (sorted ascending, non-positive entries
+dropped), at creation and on every update. If `pageSize` is not in the list it is added automatically so the
 page-size selector can display it — with a console warning when `pageSizes` was
 set explicitly.
 
@@ -121,7 +122,9 @@ paginationControls: {
 ```
 
 Available controls are `"pageSize"`, `"firstPage"`, `"previousPage"`,
-`"pageSelector"`, `"nextPage"`, and `"lastPage"`. Omitted controls are hidden.
+`"pageSelector"`, `"nextPage"`, and `"lastPage"`, plus two opt-in ones the default
+footer leaves out: `"rowSummary"` ("1–100 of 1,234") and `"pageInput"` (a "Go to
+page" field). Omitted controls are hidden. See [Pagination](../examples/pagination.mdx).
 Set `showPageLabel: false` to remove the visible `Page` label while preserving
 accessible names on the select or numbered-button group.
 Numbered pagination keeps the first and last known pages visible, centers a bounded

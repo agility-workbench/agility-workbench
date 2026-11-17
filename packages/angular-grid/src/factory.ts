@@ -73,6 +73,7 @@ export function getGridOptions(grid: AwbGrid, adapters: NgAdapters): GridOptions
   setIfDefined(options, "resetPageOn", grid.resetPageOn());
   setIfDefined(options, "pageSize", grid.pageSize());
   setIfDefined(options, "pageSizes", grid.pageSizes());
+  setIfDefined(options, "paginationAutoPageSize", grid.paginationAutoPageSize());
   setIfDefined(options, "serverSideBlockSize", grid.serverSideBlockSize());
   setIfDefined(options, "serverSideMaxBlocks", grid.serverSideMaxBlocks());
   setIfDefined(options, "rowModelType", grid.rowModelType());

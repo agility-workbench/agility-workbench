@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -139,6 +139,62 @@ describe("pagination footer visibility", () => {
     expect(container.querySelector(".pte-aggregate-controls")).toBeTruthy();
     expect(container.querySelector(".pte-pagination-nav")).toBeTruthy();
 
+    await unmountTestRoot(root);
+    container.remove();
+  });
+});
+
+describe("live page sizes", () => {
+  const manyRows = Array.from({ length: 120 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` }));
+
+  async function mount(props: Partial<React.ComponentProps<typeof Grid>>) {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const apiRef = React.createRef<any>();
+    const render = async (next: Partial<React.ComponentProps<typeof Grid>>) => {
+      await act(async () => {
+        root.render(
+          <Grid rowData={manyRows} columnDefs={columnDefs} rowIdKey="id" pagination apiRef={apiRef} {...next} />,
+        );
+      });
+    };
+    await render(props);
+    return { container, root, apiRef, render };
+  }
+
+  it("applies pageSize, pageSizes and paginationAutoPageSize changes without a creation-only warning", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { container, root, apiRef, render } = await mount({ pageSize: 25, pageSizes: [25, 50] });
+    apiRef.current.goToPage(2);
+
+    // Same values, fresh array: nothing happens (the page stays).
+    await render({ pageSize: 25, pageSizes: [25, 50] });
+    expect(apiRef.current.getPaginationInfo()).toMatchObject({ pageIndex: 2, pageSize: 25 });
+
+    await render({ pageSize: 50, pageSizes: [25, 50] });
+    expect(apiRef.current.getPaginationInfo()).toMatchObject({ pageIndex: 0, pageSize: 50 });
+
+    await render({ pageSize: 50, pageSizes: [10, 50, 200] });
+    const options = [...container.querySelectorAll<HTMLOptionElement>(".pte-pagination-size-control option")];
+    expect(options.map(o => o.value)).toEqual(["10", "50", "200"]);
+
+    await render({ pageSize: 50, pageSizes: [10, 50, 200], paginationAutoPageSize: true });
+    expect(apiRef.current.getGridOption("paginationAutoPageSize")).toBe(true);
+    expect(container.querySelector(".pte-pagination-size-control")).toBeNull();
+    await render({ pageSize: 50, pageSizes: [10, 50, 200], paginationAutoPageSize: false });
+    expect(container.querySelector(".pte-pagination-size-control")).toBeTruthy();
+
+    expect(warn.mock.calls.filter(([message]) => String(message).includes("changed after the grid was created"))).toEqual([]);
+    warn.mockRestore();
+    await unmountTestRoot(root);
+    container.remove();
+  });
+
+  it("forwards paginationAutoPageSize at creation", async () => {
+    const { container, root, apiRef } = await mount({ paginationAutoPageSize: true });
+    expect(apiRef.current.getGridOption("paginationAutoPageSize")).toBe(true);
+    expect(container.querySelector(".pte-pagination-size-control")).toBeNull();
     await unmountTestRoot(root);
     container.remove();
   });

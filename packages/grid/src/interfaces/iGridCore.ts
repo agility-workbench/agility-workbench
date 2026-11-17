@@ -43,6 +43,14 @@ export type RowData = unknown;
 export interface ColumnState {
   colId: ColId;
   widthPx?: number;
+  /**
+   * The column's flex weight (`ColDef.flex`), or `null` when it has a fixed width.
+   * `api.getColumnState()` always reports it. On `api.applyColumnState()` a positive number turns
+   * flex on, `null` turns it off — fixing the column at `widthPx` when given, else at its current
+   * width — and an absent field leaves it alone. A column still flexing after the apply ignores
+   * `widthPx` (flex decides its width).
+   */
+  flex?: number | null;
   pinned?: "left" | "right" | null;
   hidden?: boolean;
   order?: number; // leaf order
@@ -172,6 +180,15 @@ export interface IGridCore {
    * instance ids of the leaves it sized (empty for an unknown column).
    */
   autosizeColumn(colId: string): string[];
+  /**
+   * Record the centre viewport width `ColDef.flex` columns share (the renderer reports it after
+   * every width pass and resize). A change re-lays the flex columns out and emits one
+   * `columnWidthsChanged` when any width moved. Non-positive widths are ignored.
+   */
+  setFlexViewportWidth(widthPx: number): void;
+  /** Re-run the flex layout against the recorded viewport width. Emits nothing; returns the
+   * instance ids of the flex leaves whose width changed. */
+  applyFlexLayout(): string[];
 
   /** Returns cell value (raw). */
   getCellValue(rowId: GridId, colId: ColId): unknown;
@@ -313,6 +330,15 @@ export interface IGridCore {
   noteRenderedRowRange(start: number, end: number): void;
   /** Current pagination state (same payload the `paginationChanged` event carries). */
   getPaginationInfo(): GridEventPaginationChangedParams;
+  /**
+   * Live `pageSize` / `pageSizes` / `paginationAutoPageSize`. Presence-based; a new page size
+   * returns to the first page, the size already in force is a no-op.
+   */
+  setPageSizeOptions(options: Pick<GridOptions, "pageSize" | "pageSizes" | "paginationAutoPageSize">): void;
+  /** Whether `paginationAutoPageSize` currently owns the page size. */
+  isPaginationAutoPageSize(): boolean;
+  /** Warn (once per grid) that a page size was asked for while auto page size owns it. */
+  warnAutoPageSizeOverride(source: string): void;
   getEditingCell(): CellRef | null;
   getActionFrameCell(): CellRef | null;
   canUndo(): boolean;

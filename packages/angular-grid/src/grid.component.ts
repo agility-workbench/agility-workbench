@@ -244,6 +244,8 @@ export class AwbGrid<TData = any> implements OnDestroy {
   readonly paginationControls = input<GridOptions["paginationControls"]>();
   readonly pageSize = input<GridOptions["pageSize"]>();
   readonly pageSizes = input<GridOptions["pageSizes"]>();
+  /** Size pages to the rows that fit the body; see `GridOptions.paginationAutoPageSize`. Updatable. */
+  readonly paginationAutoPageSize = input<GridOptions["paginationAutoPageSize"]>();
   readonly resetPageOn = input<GridOptions["resetPageOn"]>();
   readonly paginationUnknownTotalTooltip = input<GridOptions["paginationUnknownTotalTooltip"]>();
 
@@ -681,6 +683,15 @@ export class AwbGrid<TData = any> implements OnDestroy {
     this.keyedEffect(
       () => this.paginationControls(),
       (options) => api.updateGridOptions({ paginationControls: options }),
+    );
+    // Page sizes reconcile live. Compared against the creation values rather than applied on the
+    // first run: re-applying the creation pageSize would undo a size the user picked in the footer
+    // (and warn under auto page size).
+    this.keyedEffect(() => this.pageSize(), (pageSize) => api.updateGridOptions({ pageSize }));
+    this.keyedEffect(() => this.pageSizes(), (pageSizes) => api.updateGridOptions({ pageSizes }));
+    this.keyedEffect(
+      () => this.paginationAutoPageSize(),
+      (on) => api.updateGridOptions({ paginationAutoPageSize: on ?? false }),
     );
 
     // Widget configs reconcile live without remounting the grid, but a rebuild on first run would

@@ -13,6 +13,8 @@ import { mulberry32, picker } from "../helpers";
  *  - The reorder buttons show that ordering keys off each entry's explicit `order` field: a partial
  *    state with an `order` repositions only that column; one without an `order` leaves positions
  *    alone. Add the transient "Notes" column, save, then Restore (exact) to see it hidden on restore.
+ *  - "Toggle flex" turns `flex` on for Name (2) and Supplier (1) through column state — they then
+ *    share the centre width the other columns leave — and off again (`flex: null`), fixing them.
  */
 
 type ProductRow = {
@@ -112,6 +114,15 @@ export function mountColumnStateDemo(container: HTMLElement): () => void {
         setStatus("Applied { colId: 'category', pinned: 'left' } with no order — no positional jump.");
       }),
       addNotesButton,
+      btn("Toggle flex (name 2, supplier 1)", () => {
+        const on = api.getColumnState().some(s => s.colId === "name" && s.flex != null);
+        api.applyColumnState(on
+          ? [{ colId: "name", flex: null }, { colId: "supplier", flex: null }]
+          : [{ colId: "name", flex: 2 }, { colId: "supplier", flex: 1 }]);
+        setStatus(on
+          ? "Applied { flex: null } — Name and Supplier are fixed at their current widths."
+          : "Applied { flex: 2 } / { flex: 1 } — Name and Supplier share the free centre width; resize the window.");
+      }),
     ),
     statusLine,
     h("div", { style: { display: "flex", gap: "12px", flex: "1", minHeight: "0" } },
@@ -173,7 +184,7 @@ export function mountColumnStateDemo(container: HTMLElement): () => void {
     savedPanel.replaceChildren(
       h("table", { style: { fontSize: "12px", borderCollapse: "collapse", width: "100%" } },
         h("thead", null, h("tr", { style: { textAlign: "left", color: "#6b7280" } },
-          headerCell("colId"), headerCell("order"), headerCell("w"), headerCell("pin"), headerCell("hidden"),
+          headerCell("colId"), headerCell("order"), headerCell("w"), headerCell("flex"), headerCell("pin"), headerCell("hidden"),
         )),
         h("tbody", null, ...saved.map(state => h("tr", null,
           h("td", { text: state.colId, style: { padding: "2px 6px 2px 0", fontWeight: "600" } }),
@@ -182,6 +193,7 @@ export function mountColumnStateDemo(container: HTMLElement): () => void {
             text: state.widthPx != null ? String(Math.round(state.widthPx)) : "—",
             style: { padding: "2px 6px 2px 0" },
           }),
+          h("td", { text: state.flex != null ? String(state.flex) : "—", style: { padding: "2px 6px 2px 0" } }),
           h("td", { text: state.pinned ?? "—", style: { padding: "2px 6px 2px 0" } }),
           h("td", { text: state.hidden ? "yes" : "—", style: { padding: "2px 0" } }),
         ))),

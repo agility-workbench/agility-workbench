@@ -17,6 +17,7 @@ const sidebars: SidebarsConfig = {
         "examples/column-groups",
         "examples/client-side-data",
         "examples/server-side-data",
+        "examples/pagination",
         "examples/large-data",
         "examples/filtering",
         "examples/sorting",

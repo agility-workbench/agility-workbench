@@ -34,6 +34,13 @@
  *   clamp-*                        no pinned side exceeds 35% of the root
  *   full-width-row-width           full-width rows span the viewport (group rows: the content)
  *   root-overflow (warn)           nothing pokes out of the root
+ *   auto-page-scroll / auto-page-underfill   under paginationAutoPageSize (host marked
+ *                                  `data-expect-auto-page-size`) the page's rows fit the body with
+ *                                  no vertical scrolling, and less than a row of room is left over
+ *                                  (the last page excepted)
+ *   flex-gap / flex-overflow       with ColDef.flex columns in the centre (host marked
+ *                                  `data-flex-min-content`), whenever their mins fit, the centre's
+ *                                  columns fill its viewport exactly: no gap, no overflow
  */
 (function (global) {
   "use strict";
@@ -720,7 +727,54 @@
       }
     }
 
-    /* ---- 12. nothing pokes out of the root ---- */
+    /* ---- 12. auto page size fills the body ---- */
+    if (root.closest("[data-expect-auto-page-size]")) {
+      var pageRows = list(body.center.querySelectorAll(".pte-row")).filter(present);
+      if (pageRows.length) {
+        var rowH = box(pageRows[0]).height;
+        // A body shorter than one row still pages one row (the minimum), so it has to scroll.
+        if (bodyEl.clientHeight >= rowH && bodyEl.scrollHeight > bodyEl.clientHeight + 1) {
+          err("auto-page-scroll", "auto page size: the page's rows overflow the body", {
+            content: bodyEl.scrollHeight, body: bodyEl.clientHeight, rowHeight: r2(rowH),
+          });
+        }
+        var nextBtn = root.querySelector(".pte-pagination-btn-next");
+        if (nextBtn && !nextBtn.disabled) {
+          var top = Infinity, bottom = -Infinity;
+          pageRows.forEach(function (row) { var rb = box(row); top = Math.min(top, rb.top); bottom = Math.max(bottom, rb.bottom); });
+          if (bodyEl.clientHeight - (bottom - top) >= rowH - CELL_TOL) {
+            err("auto-page-underfill", "auto page size: another row would fit below the page", {
+              content: r2(bottom - top), body: bodyEl.clientHeight, rowHeight: r2(rowH),
+            });
+          }
+        }
+      }
+    }
+
+    /* ---- 12b. flex columns fill the centre ---- */
+    // `data-flex-min-content` (set by the harness for a grid with ColDef.flex columns in the centre):
+    // the narrowest the centre's columns can be — the fixed columns plus every flex column at its
+    // min. When that fits, the flex columns must fill the centre exactly: no gap after the last
+    // column, no overflow (and so no horizontal strip for the centre).
+    var flexHost = root.closest("[data-flex-min-content]");
+    if (flexHost && viewport.center && presentIn.center) {
+      var minContent = num(flexHost.getAttribute("data-flex-min-content"));
+      var centreClient = body.center.clientWidth;
+      var centreContent = box(viewport.center).width;
+      if (minContent <= centreClient) {
+        if (centreContent < centreClient - BOX_TOL) {
+          err("flex-gap", "flex columns leave " + r2(centreClient - centreContent) + "px of the centre empty", {
+            content: r2(centreContent), viewport: centreClient,
+          });
+        } else if (centreContent > centreClient + BOX_TOL || body.center.scrollWidth > centreClient + 1) {
+          err("flex-overflow", "flex columns overflow a centre they fit in", {
+            content: r2(centreContent), scrollWidth: body.center.scrollWidth, viewport: centreClient, minContent: r2(minContent),
+          });
+        }
+      }
+    }
+
+    /* ---- 13. nothing pokes out of the root ---- */
     if (root.scrollWidth > root.clientWidth + 1 || root.scrollHeight > root.clientHeight + 1) {
       warn("root-overflow", "root has scrollable overflow", {
         scroll: [root.scrollWidth, root.scrollHeight], client: [root.clientWidth, root.clientHeight],
