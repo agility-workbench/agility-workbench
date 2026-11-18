@@ -11,15 +11,6 @@ import {
 } from "../interfaces/pivot";
 import { BLANK_GROUP_KEY, groupKeyForValue } from "./rowGroup";
 
-// Mutable trie node used during discovery only; flattened to PivotPathNode for the core.
-interface TrieNode {
-  key: string;
-  value: any;
-  // A representative leaf for comparator calls (comparators may inspect the row node).
-  firstLeaf: IRowNode;
-  children: Map<string, TrieNode>;
-}
-
 export interface DiscoverPivotParams<Row = any> {
   // Filtered+sorted leaf nodes, in display order.
   leaves: IRowNode<Row>[];
@@ -66,7 +57,7 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
     return { discovery: emptyDiscovery(), leafPathKeys, includedPaths: [""] };
   }
 
-  const rootChildren = new Map<string, TrieNode>();
+  const rootChildren = new Map<string, PivotTrieNode>();
   for (const leaf of leaves) {
     let level = rootChildren;
     let pathKey = "";
@@ -84,7 +75,49 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
     leafPathKeys.set(leaf.id, pathKey);
   }
 
-  const sortSiblings = (nodes: TrieNode[], col: Column): TrieNode[] => {
+  const { discovery, includedPaths } = finishPivotDiscovery({
+    rootChildren: [...rootChildren.values()],
+    pivotColumns,
+    valueEntries,
+    maxPivotColumns,
+  });
+  return { discovery, leafPathKeys, includedPaths };
+}
+
+/** One distinct pivot value during discovery, before ordering: the shape both row models build. */
+export interface PivotTrieNode {
+  key: string;
+  value: any;
+  /** A representative leaf for `sortComparator` calls that read the row node. Absent on the
+   * server-side model, which never holds the leaves a pivot value came from. */
+  firstLeaf?: IRowNode;
+  children: Map<string, PivotTrieNode>;
+}
+
+/**
+ * Order and cap a discovered pivot-value tree — the half of discovery both row models share, so a
+ * pivot's header comes out the same whichever model found the values. Sibling order is
+ * pivotComparator, else the column's sort comparator, else collator order — ascending, blanks always
+ * last (mirroring the set-filter blank policy). Truncation keeps the first ⌊max / valueEntries⌋
+ * paths (at least one) in header order and prunes the rest.
+ */
+export function finishPivotDiscovery(params: {
+  rootChildren: PivotTrieNode[];
+  pivotColumns: Column[];
+  valueEntries: PivotValueEntry[];
+  maxPivotColumns: number;
+}): { discovery: PivotDiscovery; includedPaths: string[] } {
+  const { rootChildren, pivotColumns, valueEntries, maxPivotColumns } = params;
+  const flat = (includedPaths: string[]) => ({
+    discovery: { roots: [], valueEntries, pivotColumnCount: pivotColumns.length, truncatedLeafCount: 0 },
+    includedPaths,
+  });
+  // No measures: nothing to generate. No pivot columns: one generated leaf per measure, at the
+  // root path.
+  if (valueEntries.length === 0) return flat([]);
+  if (pivotColumns.length === 0) return flat([""]);
+
+  const sortSiblings = (nodes: PivotTrieNode[], col: Column): PivotTrieNode[] => {
     const pivotCmp = col.pivotComparator;
     const sortCmp = col.getComparator();
     const collator = col.getCollator();
@@ -93,21 +126,21 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
       const bBlank = b.key === BLANK_GROUP_KEY;
       if (aBlank || bBlank) return aBlank && bBlank ? 0 : aBlank ? 1 : -1;
       if (pivotCmp) return pivotCmp(a.value, b.value);
-      if (sortCmp) return sortCmp(a.value, b.value, a.firstLeaf, b.firstLeaf);
+      if (sortCmp) return sortCmp(a.value, b.value, a.firstLeaf as IRowNode, b.firstLeaf as IRowNode);
       return collator.compare(a.key, b.key);
     });
   };
 
-  const toPathNode = (node: TrieNode, level: number): PivotPathNode => ({
+  const toPathNode = (node: PivotTrieNode, level: number): PivotPathNode => ({
     key: node.key,
     value: node.value,
     children: level + 1 < pivotColumns.length
       ? sortSiblings([...node.children.values()], pivotColumns[level + 1]).map(c => toPathNode(c, level + 1))
       : [],
   });
-  let roots = sortSiblings([...rootChildren.values()], pivotColumns[0]).map(n => toPathNode(n, 0));
+  let roots = sortSiblings(rootChildren.slice(), pivotColumns[0]).map(n => toPathNode(n, 0));
 
-  // Every leaf carries a value (blanks included) at every pivot level, so the tree has uniform
+  // Every path carries a value (blanks included) at every pivot level, so the tree has uniform
   // depth: deepest-level nodes ARE the paths.
   const allPaths: string[] = [];
   const collect = (node: PivotPathNode, prefix: string) => {
@@ -138,7 +171,6 @@ export function discoverPivot<Row = any>(params: DiscoverPivotParams<Row>): Disc
 
   return {
     discovery: { roots, valueEntries, pivotColumnCount: pivotColumns.length, truncatedLeafCount },
-    leafPathKeys,
     includedPaths,
   };
 }

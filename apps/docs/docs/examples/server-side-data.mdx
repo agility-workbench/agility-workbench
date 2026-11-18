@@ -208,6 +208,73 @@ A sort or filter on the generated hierarchy column arrives under that column's
 key, which is `__pte_tree__` unless `treeData.columnDef.key` names the server
 field the labels come from.
 
+## Pivot requests
+
+[Pivot mode](./pivot.mdx) works on the server-side row model too. The grid asks
+for group rows as it does for [row grouping](#request-contract) (`groupBy`,
+`groupKeys`), and adds `request.pivot`:
+
+```ts
+request.pivot = {
+  pivotBy: ["quarter"],                        // pivot column keys, outermost first
+  values: [{ key: "revenue", type: "sum" }],   // the measures; a column may appear once per type
+  maxPivotColumns: 200,
+};
+```
+
+The server names the generated columns. Each group row carries one value per
+*pivot field* (one pivot path × one measure) under a property the server
+chooses, and every root response declares the fields in `pivotFields`:
+
+```ts
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    if (request.pivot) {
+      // e.g. rows: [{ region: "EMEA", "Q1|sum(revenue)": 20, "Q2|sum(revenue)": 10 }, …]
+      const { rows, totalRows } = await loadPivotGroups(request);
+      return {
+        rows,
+        totalRows,
+        // Root responses only (no groupKeys): every field for the current filters.
+        pivotFields: request.groupKeys.length === 0
+          ? await listPivotFields(request) // [{ field: "Q1|sum(revenue)", pivotKeys: ["Q1"], valueKey: "revenue", aggregate: "sum" }, …]
+          : undefined,
+      };
+    }
+    /* … */
+  },
+};
+```
+
+- **`pivotFields` is the whole set** for the current filters, whatever
+  `startRow`/`endRow` asked for, so columns do not appear as rows scroll in.
+  `pivotKeys` are raw values, one per `pivotBy` key, with `null` for blanks (the
+  same convention as `groupKeys`). The grid orders the header itself, by the
+  pivot column's `pivotComparator`, then its sort comparator, with blanks last.
+  This is the same order as the client-side pivot, so the array order does not
+  matter. Fields for a measure that was not requested, or with the wrong number
+  of `pivotKeys`, are ignored with a console warning. A root response without
+  `pivotFields` leaves the columns as they were, also with a warning.
+- **No leaf rows.** The deepest row-group level does not expand, so the grid
+  never asks for leaf rows while pivoting. With no row groups at all
+  (`groupBy: []`), the request is for the grand total: return exactly one row,
+  which the grid shows as **Total**.
+- **Sorting.** A sort on a generated column arrives with its pivot `field` as
+  the `key`. Order the group rows by that value. A sort on a row-group column
+  orders the groups as it does without pivot.
+- **`aggregates` is empty** while pivoting, because the measures are in
+  `pivot.values`. A change of pivot columns, measures or row groups resets the
+  loaded rows and refetches, as a grouping change does.
+- **Footer grand totals** are per generated column. They come from
+  `getAggregates` (or `serverSideAggregationSource`), which receives the same
+  `pivot` block and returns each total under its field:
+  `{ values: { "Q1|sum(revenue)": 25, … } }`. Here **Current page** means the
+  same as **Entire dataset**, because the page holds group rows, not source rows.
+  Without an aggregation source the footer stays empty while grouped: summing the
+  loaded group rows would be wrong for averages and distinct counts. An
+  ungrouped pivot's **Total** row already is the grand total, so the footer
+  reuses it.
+
 ## Whole-dataset totals
 
 The footer's aggregate scope offers **Current page**, summed in the browser over

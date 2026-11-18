@@ -772,7 +772,7 @@ export const DEFAULT_LOCALE_TEXT: GridLocaleText = {
   // Sheets
   sheets: "Sheets",
   addPivotSheet: "Add pivot sheet",
-  pivotSheetsUnsupported: "Pivot sheets need the client-side row model without tree data",
+  pivotSheetsUnsupported: "Pivot sheets cannot be used with tree data",
   dataSheetName: "Data",
   pivotSheetName: "Pivot {index}",
   sheetCopyName: "{name} (copy)",

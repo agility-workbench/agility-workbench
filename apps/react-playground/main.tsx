@@ -13,6 +13,7 @@ import SheetsDemo from "./SheetsDemo";
 import C3ViewIndexDemo from "./C3ViewIndexDemo";
 import ServerSideGroupingDemo from "./ServerSideGroupingDemo";
 import ServerSideAggregateScopeDemo from "./ServerSideAggregateScopeDemo";
+import ServerSidePivotDemo from "./ServerSidePivotDemo";
 import ServerSideTreeDataDemo from "./ServerSideTreeDataDemo";
 import ServerSideTreeDuplicateIdDemo from "./ServerSideTreeDuplicateIdDemo";
 import TreeDataDemo from "./TreeDataDemo";
@@ -60,6 +61,7 @@ const PAGES = [
   { id: "c3ViewIndex", label: "C3 grouped pagination", render: () => <C3ViewIndexDemo /> },
   { id: "serverSideGrouping", label: "Server-side grouping", render: () => <ServerSideGroupingDemo /> },
   { id: "serverSideAggregateScope", label: "SSRM: aggregate scope", render: () => <ServerSideAggregateScopeDemo /> },
+  { id: "serverSidePivot", label: "SSRM: pivot", render: () => <ServerSidePivotDemo /> },
   { id: "serverSideTreeData", label: "Server-side tree data", render: () => <ServerSideTreeDataDemo /> },
   { id: "serverSideTreeDuplicateId", label: "SSRM tree: duplicate id guard", render: () => <ServerSideTreeDuplicateIdDemo /> },
   { id: "treeData", label: "Tree data", render: () => <TreeDataDemo /> },

@@ -217,8 +217,7 @@ export interface IGridCore {
   getAggregateScope(): AggregateScope;
   getRowGroupColumns(): Column[];
   /**
-   * Whether this grid can pivot at all — false for the server-side row model (no pivot handling)
-   * and for tree data. Fixed for the life of the grid: pivot affordances gate on it rather than
+   * Whether this grid can pivot at all — false with tree data (client- or server-side). Fixed for the life of the grid: pivot affordances gate on it rather than
    * letting users reach `setPivotMode`'s refusal.
    */
   isPivotSupported(): boolean;

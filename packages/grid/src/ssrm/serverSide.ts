@@ -10,6 +10,10 @@ import { Column } from "../column/column";
 import { writeKeyPath } from "../column/keyPath";
 import { BLANK_GROUP_KEY, groupKeyForValue, groupNodeId } from "../csrm/rowGroup";
 import { labelFor } from "../csrm/treeData";
+import { identityPivotResolution, PIVOT_TOTAL_GROUP_ID } from "../csrm/pivot";
+import { isPivotResultColId, PivotDiscovery, PivotRequestState } from "../interfaces/pivot";
+import { resolveLocaleText } from "../interfaces/locale";
+import { resolveServerPivotFields, serializeServerPivot } from "./serverPivot";
 import {
   IServerSideAggregationRequest,
   IServerSideDataSource,
@@ -154,6 +158,18 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   // decides the row shape and cannot change on a mounted grid.
   private readonly treeOptions?: TreeDataServerOptions<Row>;
 
+  // Pivot mode (`params.pivot` present). The server names the generated columns' fields on its
+  // root responses (`pivotFields`); `pivotStamps` maps each kept field to the generated leaf's
+  // instanceID, which is what group rows are stamped under (see buildGroupAggregates), and
+  // `pivotFieldByColId` turns a sort on a generated column back into the server's field.
+  private pivot: PivotRequestState | null = null;
+  // Everything the rows and generated columns are derived from: a change is a structural reload.
+  private pivotSignature = "";
+  private pivotStamps: Map<string, string> = new Map();
+  private pivotFieldByColId: Map<string, string> = new Map();
+  private warnedPivotFields = false;
+  private readonly pivotTotalLabel: string;
+
   constructor(
     private opts: GridOptions,
     readonly listener: IRowModelListener,
@@ -166,6 +182,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     this.treeOptions = opts.treeData?.mode === "server"
       ? opts.treeData as TreeDataServerOptions<Row>
       : undefined;
+    this.pivotTotalLabel = resolveLocaleText(opts, "pivotTotal");
   }
 
   private get treeMode(): boolean {
@@ -322,7 +339,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     const roots = this.snapshotListing(root, new Set());
     // Tree mode: every loaded top-level row is a hierarchy root (a root leaf is a one-node tree).
     if (this.treeMode) return roots;
-    if (this.groupBy.length === 0) return [];
+    if (this.groupBy.length === 0 && !this.pivot) return [];
     return roots.filter(n => n.isGroup);
   }
 
@@ -432,9 +449,14 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     this.aggregateScope = this.normalizeAggregateScope(params.aggregateScope);
     this.aggregates = params.aggregates.slice();
     this.leafColumns = params.leafColumns.slice();
+    this.pivot = params.pivot ?? null;
+    const pivotSignature = this.computePivotSignature(params);
+    const pivotChanged = pivotSignature !== this.pivotSignature;
 
     if (params.reason === "aggregateScope"
-      || (params.reason === "aggregateModel" && this.groupBy.length === 0)) {
+      // A measure edit while pivoted changes the generated columns: only an unchanged pivot (an
+      // aggregate request for some other reason) is footer-only.
+      || (params.reason === "aggregateModel" && (this.pivot ? !pivotChanged : this.groupBy.length === 0))) {
       // Footer-only change: no per-group values to refetch.
       void this.reAggregate(params.id, params.reason === "aggregateScope" ? "aggregateScope" : "aggregateModel", params.aggregateReason);
       return;
@@ -490,12 +512,107 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     // expanded-but-visible subtrees re-fetch lazily as the renderer finds their rows missing.
     this.groupBy = params.groupColumns.slice();
     this.purgeStore();
+    if (pivotChanged) {
+      const entering = this.pivotSignature === "";
+      // The fields a server named answer for the old measures; the next root response names them
+      // afresh. On a change within pivot mode the generated columns stay laid out meanwhile and
+      // are reconciled when it arrives.
+      this.pivotSignature = pivotSignature;
+      this.pivotStamps = new Map();
+      this.pivotFieldByColId = new Map();
+      // Entering pivot mode: swap to the pivot layout now rather than when the first response
+      // lands, so the source columns do not stay on screen over a pending pivot. Nothing is
+      // discovered yet — with pivot columns that is no generated column at all, without them the
+      // one-per-measure columns the response will fill.
+      if (entering && this.pivot) {
+        this.reportPivotDiscovery({
+          roots: [],
+          valueEntries: this.pivot.valueEntries,
+          pivotColumnCount: this.pivot.columns.length,
+          truncatedLeafCount: 0,
+        });
+      }
+    }
+    if (this.isPivotUnconfigured()) {
+      // Pivot mode with no role filled shows nothing, so there is nothing to ask the server: an
+      // empty discovery clears the generated layout, and an empty counted root is the whole view.
+      this.reportPivotDiscovery({ roots: [], valueEntries: [], pivotColumnCount: 0, truncatedLeafCount: 0 });
+      this.getOrCreateListing(ROOT_LISTING_ID, [], []).counted = true;
+      this.rebuildFlat();
+      this.emitRows(params, params.reason, true);
+      void this.reAggregate(params.id, "aggregateModel", params.aggregateReason ?? "rows");
+      return;
+    }
     this.rebuildFlat();
     if (!this.isValid()) {
       this.listener.onError(params.id, new Error("Server-side row model requires a data source."));
       return;
     }
     this.startFill(params);
+  }
+
+  /** "" outside pivot mode; otherwise the pivot inputs the rows and generated columns come from. */
+  private computePivotSignature(params: IRowModelRequestParams): string {
+    const pivot = params.pivot;
+    if (!pivot) return "";
+    return JSON.stringify([
+      params.groupColumns.map(col => col.key),
+      pivot.columns.map(col => col.key),
+      pivot.valueEntries.map(entry => [entry.column.key, entry.colId, entry.type]),
+      pivot.maxPivotColumns,
+    ]);
+  }
+
+  /** Pivot mode with no row group, no pivot column and no value (the blank-pivot canvas). */
+  private isPivotUnconfigured(): boolean {
+    return this.pivot != null
+      && this.groupBy.length === 0
+      && this.pivot.columns.length === 0
+      && this.pivot.valueEntries.length === 0;
+  }
+
+  /** Ungrouped pivot: the root listing is the single grand-total row. */
+  private isPivotTotalListing(listing: ChildListing<Row>): boolean {
+    return this.pivot != null && this.groupBy.length === 0 && listing.id === ROOT_LISTING_ID;
+  }
+
+  // Hand the core a discovery (it reconciles the generated columns and answers colId →
+  // instanceID) and keep the field → instanceID stamps group rows are filled from.
+  private reportPivotDiscovery(discovery: PivotDiscovery, fieldByColId: Map<string, string> = new Map()): void {
+    const resolution = this.listener.onPivotResult
+      ? this.listener.onPivotResult(this.latestRequestId, discovery)
+      : identityPivotResolution(discovery);
+    const stamps = new Map<string, string>();
+    for (const [colId, field] of fieldByColId) stamps.set(field, resolution.get(colId) ?? colId);
+    this.pivotStamps = stamps;
+    this.pivotFieldByColId = fieldByColId;
+  }
+
+  // A root response while pivoting: its `pivotFields` declare the generated columns.
+  private applyPivotFields(result: IServerSideResult | undefined): void {
+    const pivot = this.pivot!;
+    const fields = result?.pivotFields;
+    if (!Array.isArray(fields)) {
+      if (!this.warnedPivotFields) {
+        this.warnedPivotFields = true;
+        console.warn(
+          "Server-side pivot: a root response carried no pivotFields, so the generated columns were "
+          + "left as they were. Return the complete pivotFields list on every root-listing response "
+          + "while request.pivot is present.",
+        );
+      }
+      return;
+    }
+    const { discovery, fieldByColId, ignoredCount } = resolveServerPivotFields(fields, pivot);
+    if (ignoredCount > 0 && !this.warnedPivotFields) {
+      this.warnedPivotFields = true;
+      console.warn(
+        `Server-side pivot: ignored ${ignoredCount} pivotFields entr${ignoredCount === 1 ? "y" : "ies"} `
+        + "naming a measure that was not requested (valueKey + aggregate must match request.pivot.values) "
+        + "or carrying a pivotKeys array of the wrong length (one value per request.pivot.pivotBy key).",
+      );
+    }
+    this.reportPivotDiscovery(discovery, fieldByColId);
   }
 
   /**
@@ -1064,7 +1181,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       endRow: requestedEnd,
       groupBy: this.groupBy.map(col => col.key),
       groupKeys: listing.groupKeys,
-      aggregates: this.isGroupLevel(listing) ? this.serializeAggregates() : [],
+      // While pivoting the measures travel in `pivot.values`, and the values come back per field.
+      aggregates: this.isGroupLevel(listing) && !this.pivot ? this.serializeAggregates() : [],
+      ...(this.pivot ? { pivot: serializeServerPivot(this.pivot) } : {}),
       // Tree mode only, and only below the root: the key stays off the root request entirely so
       // "children of nothing" reads as absent rather than as an empty parent.
       ...(listing.treeParent ? { treeParent: listing.treeParent } : {}),
@@ -1119,9 +1238,19 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
           });
         }
 
+        // Before the rows are ingested: they are stamped under the instanceIDs this reconciles.
+        if (this.pivot && listing.id === ROOT_LISTING_ID) this.applyPivotFields(result);
+
         this.listings.set(listing.id, listing);
-        this.ingestRows(listing, (result?.rows ?? []) as Row[], blockStart, {
-          totalRows: result?.totalRows,
+        let rows = (result?.rows ?? []) as Row[];
+        let totalRows = result?.totalRows;
+        if (this.isPivotTotalListing(listing)) {
+          // The grand-total row: exactly one, whatever the server sent.
+          rows = rows.slice(0, 1);
+          totalRows = rows.length;
+        }
+        this.ingestRows(listing, rows, blockStart, {
+          totalRows,
           requestedCount: requestedEnd - blockStart,
         });
         this.rebuildFlat();
@@ -1173,6 +1302,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     // Tree mode has no group levels at all: rows are data rows the whole way down, so no request
     // ever carries aggregates.
     if (this.treeMode) return false;
+    if (this.isPivotTotalListing(listing)) return true;
     return listing.groupKeys.length < this.groupBy.length;
   }
 
@@ -1189,10 +1319,29 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     // is rejected whole and the listing is left exactly as it was.
     const treeIds = this.treeOptions ? this.checkTreeRowIds(listing, rows) : undefined;
 
+    // A pivot never shows leaf rows: its deepest row-group level does not expand.
+    const pivotLastLevel = this.pivot != null && level === this.groupBy.length - 1;
+
     rows.forEach((raw, i) => {
       const childIdx = startRow + i;
       let node: IRowNode<Row>;
-      if (isGroupLevel && groupCol) {
+      if (isGroupLevel && this.isPivotTotalListing(listing)) {
+        node = {
+          id: PIVOT_TOTAL_GROUP_ID,
+          data: raw,
+          viewIndex: -1,
+          selected: this.nodesMap.get(PIVOT_TOTAL_GROUP_ID)?.selected ?? false,
+          type: "group",
+          isGroup: true,
+          level: 0,
+          isExpanded: false,
+          expandable: false,
+          childCount: this.opts.getGroupChildCount?.(raw) ?? undefined,
+          groupKey: this.pivotTotalLabel,
+          groupValue: this.pivotTotalLabel,
+          aggregateValues: this.buildGroupAggregates(raw),
+        };
+      } else if (isGroupLevel && groupCol) {
         const value = (raw as any)[groupCol.key];
         const key = groupKeyForValue(value);
         const id = groupNodeId([...listing.path, key]);
@@ -1204,7 +1353,8 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
           type: "group",
           isGroup: true,
           level,
-          isExpanded: this.expansion.get(id) ?? this.isExpandedByDefault(level),
+          isExpanded: pivotLastLevel ? false : this.expansion.get(id) ?? this.isExpandedByDefault(level),
+          ...(pivotLastLevel ? { expandable: false } : {}),
           childCount: this.opts.getGroupChildCount?.(raw) ?? undefined,
           groupKey: key,
           groupValue: value,
@@ -1329,6 +1479,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   }
 
   private buildGroupAggregates(raw: Row): { [key: string]: any } | undefined {
+    if (this.pivot) return this.buildPivotValues(raw);
     if (this.aggregates.length === 0) return undefined;
     const out: { [key: string]: any } = {};
     let any = false;
@@ -1338,6 +1489,19 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       const value = (raw as any)[col.key];
       if (value === undefined) continue;
       out[col.instanceID] = value;
+      any = true;
+    }
+    return any ? out : undefined;
+  }
+
+  // A pivot group row's cells: each declared field's value under its generated leaf's instanceID.
+  private buildPivotValues(raw: any): { [key: string]: any } | undefined {
+    const out: { [key: string]: any } = {};
+    let any = false;
+    for (const [field, instanceID] of this.pivotStamps) {
+      const value = raw?.[field];
+      if (value === undefined) continue;
+      out[instanceID] = value;
       any = true;
     }
     return any ? out : undefined;
@@ -1575,10 +1739,13 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     if (!sortModel) return [];
     const sortsByKey = new Map<string, IServerSideSort>();
     for (const item of sortModel.items) {
-      sortsByKey.set(item.col.key, {
-        key: item.col.key,
-        dir: item.dir,
-      });
+      // A generated pivot column sorts by the field the server named it; one the server has not
+      // named (yet) has nothing to sort by.
+      const key = isPivotResultColId(item.col.colId)
+        ? this.pivotFieldByColId.get(item.col.colId)
+        : item.col.key;
+      if (key == null) continue;
+      sortsByKey.set(key, { key, dir: item.dir });
     }
     return Array.from(sortsByKey.values());
   }
@@ -1610,7 +1777,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   ): Promise<void> {
     this.aggregateValues.clear();
     const requestSeq = ++this.aggregateRequestSeq;
-    if (this.aggregateScope !== "none" && this.aggregates.length > 0) {
+    if (this.pivot) {
+      if (this.aggregateScope !== "none") await this.aggregatePivot(requestSeq);
+    } else if (this.aggregateScope !== "none" && this.aggregates.length > 0) {
       if (this.aggregateScope === "all" && this.canAggregateWholeDataset()) {
         await this.requestServerAggregates(requestSeq);
       } else {
@@ -1624,6 +1793,60 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       scope: this.aggregateScope,
       aggregateModel: this.aggregates.slice(),
       valuesAvailable: this.aggregateValues.size > 0,
+    });
+  }
+
+  /**
+   * The footer while pivoting: grand totals per GENERATED column. "page" means the same as "all"
+   * here, as client-side — the page holds group rows, not a leaf subset. An ungrouped pivot's one
+   * row already is the grand total; otherwise only the server can total its source rows (summing
+   * the loaded group rows would be wrong for avg, median or distinct counts), so without an
+   * aggregation source the footer stays empty.
+   */
+  private async aggregatePivot(requestSeq: number): Promise<void> {
+    if (this.groupBy.length === 0) {
+      const total = this.nodesMap.get(PIVOT_TOTAL_GROUP_ID)?.aggregateValues;
+      this.aggregateValues = new Map(Object.entries(total ?? {}));
+      return;
+    }
+    const aggregationSource = this.resolveAggregationSource();
+    if (!aggregationSource || this.pivotStamps.size === 0) return;
+    const params = this.lastRequestParams;
+    try {
+      const result = await this.invokeAggregationSource(aggregationSource, {
+        aggregates: [],
+        aggregateScope: "all",
+        filters: this.createAggregationFilters(),
+        ...this.serializeQuickFilter(params?.quickFilter),
+        sorts: [],
+        startRow: undefined,
+        endRow: undefined,
+        pivot: serializeServerPivot(this.pivot!),
+      });
+      if (requestSeq !== this.aggregateRequestSeq) return;
+      const values = result?.values ?? {};
+      for (const [field, instanceID] of this.pivotStamps) {
+        const value = values[field];
+        if (value != null) this.aggregateValues.set(instanceID, value);
+      }
+    } catch (err) {
+      if (requestSeq !== this.aggregateRequestSeq) return;
+      this.aggregateValues.clear();
+      console.error("Failed to fetch server-side aggregates", err);
+    }
+  }
+
+  private invokeAggregationSource(
+    aggregationSource: ServerSideAggregationSource,
+    request: IServerSideAggregationRequest,
+  ): Promise<any> {
+    return new Promise<any>((resolve, reject) => {
+      const maybePromise = aggregationSource({ request, success: resolve, error: reject });
+      Promise.resolve(maybePromise)
+        .then((maybeResult) => {
+          if (maybeResult && typeof maybeResult === "object") resolve(maybeResult);
+        })
+        .catch(reject);
     });
   }
 
@@ -1669,27 +1892,14 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     const params = this.lastRequestParams;
 
     try {
-      const result = await new Promise<any>((resolve, reject) => {
-        const maybePromise = aggregationSource({
-          request: {
-            aggregates,
-            aggregateScope: "all",
-            filters: this.createAggregationFilters(),
-            ...this.serializeQuickFilter(params?.quickFilter),
-            sorts: params ? this.serializeSorts(params.sortModel) : [],
-            startRow: undefined,
-            endRow: undefined,
-          },
-          success: resolve,
-          error: reject,
-        });
-        Promise.resolve(maybePromise)
-          .then((maybeResult) => {
-            if (maybeResult && typeof maybeResult === "object") {
-              resolve(maybeResult);
-            }
-          })
-          .catch(reject);
+      const result = await this.invokeAggregationSource(aggregationSource, {
+        aggregates,
+        aggregateScope: "all",
+        filters: this.createAggregationFilters(),
+        ...this.serializeQuickFilter(params?.quickFilter),
+        sorts: params ? this.serializeSorts(params.sortModel) : [],
+        startRow: undefined,
+        endRow: undefined,
       });
 
       if (requestSeq !== this.aggregateRequestSeq) return;

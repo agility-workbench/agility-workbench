@@ -10,7 +10,7 @@ workspaces.
 - **Angular binding** — using Angular 20.3+? Install [`@agility-workbench/angular-grid`](https://www.npmjs.com/package/@agility-workbench/angular-grid),
   which provides the standalone `<awb-grid>` component on top of this core.
 - **Virtualized** rendering, client-side and server-side row models, row grouping, tree data,
-  aggregation, client-side pivot mode, spreadsheet-style sheet tabs, quick filter, set filters
+  aggregation, pivot mode (client- or server-side), spreadsheet-style sheet tabs, quick filter, set filters
   with a tree layout, editing, and CSV / Excel export (zero-dependency `.xlsx` writer).
 - **Themeable** via an AG-Grid-style theme object that resolves to CSS variables applied
   per grid instance.
@@ -357,7 +357,7 @@ is omitted, enabling the toolbar section uses its defaults. The React binding ap
 changes live without remounting the grid. A column panel configured with `trigger: "toolbar"` also
 keeps the toolbar visible for its Columns button, independently of these section flags.
 
-`toolbar.pivot` adds the pivot-mode indicator and toggle (client-side row model only) — see
+`toolbar.pivot` adds the pivot-mode indicator and toggle (not with tree data) — see
 [Pivot mode](#pivot-mode).
 
 ### Narrow bars
@@ -461,7 +461,7 @@ visibility and their individual checkbox explains which parent currently control
 
 ## Pivot mode
 
-Pivot mode (client-side row model) turns the grid into a pivot table over its own rows: row
+Pivot mode turns the grid into a pivot table over its own rows: row
 groups down the side, one generated column group per distinct value of each pivot column, and one
 read-only, sortable leaf per value aggregate underneath. Filters and the quick filter keep running
 on the source rows, cell edits re-derive the pivot live, and the three roles are ordinary grid
@@ -507,6 +507,31 @@ caps the generated set (whole pivot values at a time), firing the latched
 `pivotColumnLimitReached` event instead of failing. Pivot state — including everything a sheet
 needs — rides the ordinary view-state capture/apply, and CSV/Excel export writes the generated
 nested headers with every group row.
+
+On the **server-side row model** the server does the pivoting. Each request carries
+`request.pivot` (`pivotBy` column keys, the `values` measures, `maxPivotColumns`); the server
+returns group rows with one value per *pivot field* under a property it names, and declares the
+complete field list on every root response:
+
+```ts
+const serverSideDataSource: IServerSideDataSource = {
+  async getRows({ request }) {
+    const { rows, totalRows } = await loadPivotGroups(request); // [{ region: "EMEA", "Q1|sum(revenue)": 20, … }]
+    return {
+      rows,
+      totalRows,
+      pivotFields: request.groupKeys.length === 0
+        ? [{ field: "Q1|sum(revenue)", pivotKeys: ["Q1"], valueKey: "revenue", aggregate: "sum" }, /* … */]
+        : undefined,
+    };
+  },
+};
+```
+
+The grid orders the generated header itself (as client-side), never requests leaf rows (the
+deepest row-group level does not expand), sends a sort on a generated column with its field as the
+key, and asks `getAggregates` — with the same `pivot` block — for the footer's per-field grand
+totals. With no row groups the request is for the single grand-total row.
 
 ## Sheets
 

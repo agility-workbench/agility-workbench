@@ -1,4 +1,4 @@
-import { AggregateModel, AggregateScope } from "./aggregate";
+import { AggregateKind, AggregateModel, AggregateScope } from "./aggregate";
 import { ColDef } from "./column";
 import { FilterType } from "./filter";
 import { QuickFilterMatchMode } from "./gridOptions";
@@ -57,6 +57,44 @@ export interface IServerSideQuickFilter {
   caseSensitive: boolean;
 }
 
+/**
+ * The pivot a server-side request asks for (`pivotMode` on a server-side grid). Present only while
+ * pivot mode is on; absent otherwise.
+ *
+ * Rows are still requested by `groupBy`/`groupKeys`, and a pivot never asks for leaf rows: the
+ * deepest row-group level does not expand. With no row groups (`groupBy` empty) the request is for
+ * the single grand-total row — return exactly one row.
+ */
+export interface IServerSidePivot {
+  /** Pivot column keys in level order (outermost header level first). May be empty: then each
+   * measure is one column at the root, with `pivotKeys: []` in `pivotFields`. */
+  pivotBy: string[];
+  /** The measures, one per (column key, aggregate type). A column may appear once per type. Empty
+   * while no value is chosen yet: return the group rows with no pivot values on them. */
+  values: AggregateModel[];
+  /** The grid shows at most this many generated value columns and drops the rest past it, in
+   * header order. A server may use it to stop enumerating pivot values early. */
+  maxPivotColumns: number;
+}
+
+/**
+ * One generated pivot value column, as the server names it. Declared in
+ * {@link IServerSideResult.pivotFields}; each group row carries its value for the column under
+ * `row[field]`.
+ */
+export interface IServerSidePivotField {
+  /** The property a group row carries this column's value under. Any string unique within the
+   * response; it is also the `key` a sort on this column is sent with. */
+  field: string;
+  /** The raw pivot values, one per `pivotBy` key in order (null for the blank value) — the same
+   * raw-value convention as `groupKeys`. Empty when `pivotBy` is empty. */
+  pivotKeys: any[];
+  /** Key of the source value column (one of `pivot.values[].key`). */
+  valueKey: string;
+  /** The measure's aggregate type (the matching `pivot.values[].type`). */
+  aggregate: AggregateKind;
+}
+
 export interface IServerSideRequest {
   /** Leaf-level column filters, applied before grouping at every level: a group exists only if it
    * has at least one matching leaf, and its aggregates/counts reflect filtered leaves only. */
@@ -89,6 +127,11 @@ export interface IServerSideRequest {
    * server-side model the quick filter always filters: the `"find"` behavior (highlight without
    * filtering) needs the rows in the browser and falls back to filtering here. */
   quickFilter?: IServerSideQuickFilter;
+  /** The pivot, while pivot mode is on (see {@link IServerSidePivot}); absent otherwise. A change
+   * of pivot columns, measures or row groups resets the block store and refetches. While pivoting,
+   * `aggregates` is empty (the measures are in `pivot.values`), and a sort on a generated column is
+   * sent with its pivot `field` as the `key` — order the group rows by that value. */
+  pivot?: IServerSidePivot;
 }
 
 export interface IServerSideResult {
@@ -103,6 +146,13 @@ export interface IServerSideResult {
   /** Dynamic schema. Honored on root requests only (no `groupKeys`, no `treeParent`). */
   columns?: ColDef[];
   schemaVersion?: string;
+  /** Pivot mode only: every generated value column for the current filters — the WHOLE set,
+   * whatever `startRow`/`endRow` asked for, since columns must not appear as rows are scrolled in.
+   * Read on root-listing responses (no `groupKeys`); return it on each one. The grid orders the
+   * header itself (`pivotComparator`, else the pivot column's comparator, blanks last), so array
+   * order does not matter. Fields naming a measure that was not requested, or with the wrong
+   * number of `pivotKeys`, are ignored. */
+  pivotFields?: IServerSidePivotField[];
 }
 
 export interface IServerSideAggregationRequest {
@@ -114,9 +164,14 @@ export interface IServerSideAggregationRequest {
   sorts: IServerSideSort[];
   startRow: number | undefined;
   endRow: number | undefined;
+  /** Pivot mode only: the grand totals are per generated column. `aggregates` is then empty and
+   * the measures are in `pivot.values`; return each total in `values` under its pivot field's
+   * `field`, as declared on the rows' `pivotFields`. */
+  pivot?: IServerSidePivot;
 }
 
 export interface IServerSideAggregationResult {
+  /** Totals keyed by column key — or, while pivoting, by pivot `field`. */
   values: Record<string, any>;
 }
 

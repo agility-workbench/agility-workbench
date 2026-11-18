@@ -12,7 +12,8 @@ Pivot mode turns the grid into a cross-tab: rows become the row-group tree, and
 the header is generated from data — one nested column group per distinct value
 of each pivot column, with one value column per aggregate underneath.
 Non-participating source columns are hidden while pivoted and return exactly
-when pivot mode turns off. Client-side row model only.
+when pivot mode turns off. Both row models pivot: on the server-side model the
+server computes the values (see [Server-side pivot](#server-side-pivot)).
 
 Pivot mode is a state **layer**, not a lens over the current state: the roles
 assigned while pivoted belong to the pivot view. Turning the mode off restores
@@ -247,6 +248,26 @@ cells are derived.
 Exporting while pivoted (toolbar or API, CSV and Excel) writes the pivot table
 itself: the nested generated header over one row per group node (every level,
 indented), with real numbers in the aggregate cells.
+
+## Server-side pivot
+
+On the [server-side row model](./server-side-data.mdx#pivot-requests) the
+browser never holds the source rows, so the server does the pivoting. Each
+request carries `request.pivot`: the pivot column keys and the measures. The
+server returns group rows with one value per pivot field, and declares the
+fields on root responses (`pivotFields`). Everything on the grid's side works
+as on the client-side model: the three roles, the column panel, the state
+layers, sheets, the header order and `maxPivotColumns`. The differences come
+from where the rows live:
+
+- The server sorts. Sorting a generated column sends its pivot field as the sort
+  key.
+- Footer grand totals need `getAggregates` (or `serverSideAggregationSource`)
+  while rows are grouped.
+- An export writes the group rows the grid has loaded, expanded or not as on
+  screen, rather than every level.
+- A cell edit does not re-derive pivot cells. Refresh with
+  `api.refreshServerSideData()` after a change on the server.
 
 Pivot mode is mutually exclusive with [tree data](./tree-data.mdx), and pairs
 naturally with [row grouping](./grouping.mdx), whose group tree it reuses. For

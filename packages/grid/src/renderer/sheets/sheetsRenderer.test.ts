@@ -220,31 +220,30 @@ describe("sheets tab strip", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  // The + button makes a PIVOT sheet, and pivot is client-side-only (see IGridCore.isPivotSupported).
+  // The + button makes a PIVOT sheet, and tree data cannot pivot (see IGridCore.isPivotSupported).
   describe("on a grid that cannot pivot", () => {
     const addButton = (host: HTMLElement) =>
       host.querySelector<HTMLButtonElement>(".pte-sheet-add")!;
 
     it.each([
-      ["the server-side row model", {
+      ["client-side tree data", { treeData: { mode: "path", getPath: (row: any) => [row.id] } }],
+      ["server-side tree data", {
         rowModelType: "serverSide",
         serverSideDataSource: { getRows: ({ success }: any) => success({ rows: [], totalRows: 0 }) },
+        treeData: { mode: "server", hasChildren: () => false },
       }],
-      ["tree data", { treeData: { mode: "path", getPath: (row: any) => [row.id] } }],
     ])("disables the + button and explains why: %s", (_label, coreOptions) => {
       const { host } = makeGrid({}, coreOptions);
       expect(addButton(host).disabled).toBe(true);
-      expect(addButton(host).title).toBe("Pivot sheets need the client-side row model without tree data");
+      expect(addButton(host).title).toBe("Pivot sheets cannot be used with tree data");
       expect(addButton(host).getAttribute("aria-label")).toBe(addButton(host).title);
     });
 
     it("adds no sheet and destroys no state if the click lands anyway", () => {
       const changes: GridSheet[][] = [];
       const { core, host } = makeGrid({ onChange: next => changes.push(next) }, {
-        rowModelType: "serverSide",
-        serverSideDataSource: { getRows: ({ success }: any) => success({ rows: [], totalRows: 0 }) },
+        treeData: { mode: "path", getPath: (row: any) => [row.id] },
       });
-      core.dispatch({ type: "rowGroupSet", colIds: ["region"] });
       core.dispatch({ type: "aggregateModelSet", aggregateModels: [{ key: "revenue", type: AggregateType.SUM }] });
 
       addButton(host).click();
@@ -253,7 +252,6 @@ describe("sheets tab strip", () => {
       expect(changes).toEqual([]);
       // The roles the sheet was configured with survive — the old failure wiped them to set up a
       // pivot the core then refused, leaving a dead tab behind.
-      expect(core.getRowGroupColumns().map(col => col.colId)).toEqual(["region"]);
       expect(core.getAggregateModel()).toHaveLength(1);
     });
   });

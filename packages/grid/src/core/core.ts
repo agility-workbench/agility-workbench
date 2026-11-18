@@ -2003,17 +2003,14 @@ export class GridCore implements IGridCore {
    * which means the same thing in both modes.
    */
   /**
-   * Why this grid cannot pivot, or null when it can. Pivot is a client-side feature: the
-   * server-side row model has no pivot handling at all, and tree data owns the row hierarchy that
-   * pivot would take over. Both are fixed for the life of the grid, so callers can treat the
-   * answer as static — the UI uses it to hide or disable pivot affordances rather than let users
-   * reach a refusal (see IGridCore.isPivotSupported).
+   * Why this grid cannot pivot, or null when it can. Tree data (client- or server-side) owns the
+   * row hierarchy that pivot would take over. That is fixed for the life of the grid, so callers
+   * can treat the answer as static — the UI uses it to hide or disable pivot affordances rather
+   * than let users reach a refusal (see IGridCore.isPivotSupported). Both row models pivot: the
+   * server-side one asks the server for the values (`IServerSideRequest.pivot`).
    */
   private pivotUnsupportedReason(): string | null {
     if (this.options.treeData) return "Pivot mode cannot be combined with tree data.";
-    if (this.rowModel.getType() !== "clientSide") {
-      return "Pivot mode is not supported on the server-side row model yet.";
-    }
     return null;
   }
 

@@ -332,6 +332,8 @@ export type {
   IServerSideFilter,
   IServerSideGetRowsParams,
   IServerSideGroupKey,
+  IServerSidePivot,
+  IServerSidePivotField,
   IServerSideQuickFilter,
   IServerSideRequest,
   IServerSideResult,

@@ -3,6 +3,29 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## Unreleased
+
+### Features
+
+- **Pivot mode works on the server-side row model.** The server computes the values. Each
+  `getRows` request carries `request.pivot` (`pivotBy` column keys, the `values` measures as
+  `{ key, type }`, `maxPivotColumns`) alongside the usual `groupBy`/`groupKeys`, and `aggregates` is
+  empty while pivoting. The server returns group rows with one value per pivot field under a
+  property it names, and declares the complete field list for the current filters on every root
+  response as `pivotFields: [{ field, pivotKeys, valueKey, aggregate }]` (new types
+  `IServerSidePivot`, `IServerSidePivotField`). The grid orders the generated header itself
+  (`pivotComparator`, then the column comparator, blanks last — the client-side order) and applies
+  `maxPivotColumns` and `pivotColumnLimitReached` as client-side. It never asks for leaf rows: the
+  deepest row-group level does not expand, and with no row groups the request is for the single
+  grand-total row, shown as **Total**. A sort on a generated column is sent with its field as the
+  key. A change of pivot columns, measures or row groups refetches. Footer grand totals per
+  generated column come from `getAggregates` / `serverSideAggregationSource`, whose request gains
+  the same `pivot` block. Without one, the footer of a grouped server-side pivot stays empty. The
+  column panel, the toolbar toggle, the state layers, sheets and the pivot export work unchanged;
+  the export writes the group rows the grid has loaded. Malformed fields, and a root response
+  without `pivotFields`, warn once. `isPivotSupported()` is now false only with tree data, and the
+  sheet strip's **+** tooltip says so ("Pivot sheets cannot be used with tree data").
+
 ## 1.17.0 — 2026-11-17
 
 ### Features
