@@ -398,6 +398,23 @@ describe("server-side pivot", () => {
     expect(core.getRowModel().getAggregateValues().get(q2.instanceID)).toBe(57);
   });
 
+  it("does not re-ask for the grand totals when an expansion loads more group rows", async () => {
+    const { source, aggregationRequests } = makePivotServer();
+    const core = makeGrid(source);
+    await flush();
+    enterPivot(core, ["region", "country"]);
+    await flush();
+    const asked = aggregationRequests.length;
+    expect(asked).toBeGreaterThan(0);
+
+    const [emea] = viewNodes(core);
+    core.dispatch({ type: "groupToggleExpand", groupId: emea.id, expanded: true });
+    await flush();
+
+    expect(viewNodes(core).some(n => n.level === 1)).toBe(true);
+    expect(aggregationRequests).toHaveLength(asked);
+  });
+
   it("leaves the footer empty while grouped without an aggregation source", async () => {
     const { source } = makePivotServer();
     const core = makeGrid({ getRows: source.getRows });

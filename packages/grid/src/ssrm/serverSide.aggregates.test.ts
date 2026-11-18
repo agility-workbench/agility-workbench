@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GridCore } from "../core/core";
 import { AggregateType } from "../interfaces/aggregate";
 import { ColumnType } from "../interfaces/column";
@@ -163,5 +163,72 @@ describe("server-side whole-dataset aggregation", () => {
 
     expect(core.getAggregateScope()).toBe("all");
     expect(total()).toBe(WHOLE_DATASET_SUM);
+  });
+
+  describe("asking the server once per distinct request", () => {
+    const goToPage = (core: GridCore, pageIndex: number) =>
+      core.dispatch({ type: "paginationSet", enabled: true, pageIndex, pageSize: 10 });
+
+    it("keeps the whole-dataset totals while new pages load their blocks", async () => {
+      const log: string[] = [];
+      const { core, total } = makeCore({ getRows, getAggregates: aggregatesFrom("dataSource", log) });
+      await flush();
+      core.setAggregateModel([{ key: "amount", type: AggregateType.SUM }]);
+      core.setAggregateScope("all");
+      await flush();
+      expect(log).toEqual(["dataSource:all"]);
+
+      // Every page is a fresh block, and every block arrival re-runs the footer.
+      goToPage(core, 1);
+      await flush();
+      goToPage(core, 3);
+      await flush();
+
+      expect(log).toEqual(["dataSource:all"]);
+      expect(total()).toBe(WHOLE_DATASET_SUM);
+    });
+
+    it("asks again when the request changes or the data may have", async () => {
+      const log: string[] = [];
+      const { core } = makeCore({ getRows, getAggregates: aggregatesFrom("dataSource", log) });
+      await flush();
+      core.setAggregateModel([{ key: "amount", type: AggregateType.SUM }]);
+      core.setAggregateScope("all");
+      await flush();
+
+      core.setAggregateModel([{ key: "amount", type: AggregateType.AVG }]);
+      await flush();
+      expect(log).toHaveLength(2);
+
+      // Same request, but a refresh says the server's data may have changed.
+      core.refreshServerSideData();
+      await flush();
+      expect(log).toHaveLength(3);
+    });
+
+    it("forgets a failed request, so the next footer run asks again", async () => {
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      let calls = 0;
+      const { core, total } = makeCore({
+        getRows,
+        getAggregates: ({ success, error }) => {
+          calls++;
+          if (calls === 1) error(new Error("totals unavailable"));
+          else success({ values: { amount: WHOLE_DATASET_SUM } });
+        },
+      });
+      await flush();
+      core.setAggregateModel([{ key: "amount", type: AggregateType.SUM }]);
+      core.setAggregateScope("all");
+      await flush();
+      expect(calls).toBe(1);
+      expect(total()).toBeUndefined();
+      expect(errors).toHaveBeenCalled();
+
+      goToPage(core, 1);
+      await flush();
+      expect(calls).toBe(2);
+      expect(total()).toBe(WHOLE_DATASET_SUM);
+    });
   });
 });

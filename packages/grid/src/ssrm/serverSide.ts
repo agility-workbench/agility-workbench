@@ -113,6 +113,12 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   private aggregateValues: Map<string, any> = new Map();
   private aggregateCalculator = new AggregateCalculator();
   private aggregateRequestSeq = 0;
+  // The last whole-dataset totals asked of the server, by request (see fetchServerTotals): block
+  // arrivals, page moves and expansion re-run the footer, but none of them changes the totals.
+  private serverTotals: { key: string; owner: unknown; values: Promise<Record<string, any>> } | null = null;
+  // Bumped when the server's data may have changed under an unchanged request (a refresh, a
+  // transaction); together with storeGeneration it is part of every totals cache key.
+  private totalsEpoch = 0;
 
   // Bumped on every purge; block responses from an older generation are dropped.
   private storeGeneration = 0;
@@ -213,6 +219,8 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
    * the view is missing. Pure updates leave in-flight fetches alone.
    */
   applyTransaction(tx: RowTransaction<Row>): RowTransactionResult {
+    // The application changed rows on the server: totals asked for before may be stale.
+    this.totalsEpoch++;
     const shifted = new Set<ChildListing<Row>>();
     const removed = tx.remove?.length ? this.removeLoadedRows(tx.remove, shifted) : 0;
     let updated = 0;
@@ -640,6 +648,8 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
   async refreshServerSideData(options: ServerSideRefreshOptions | undefined, requestId: number): Promise<boolean> {
     if (!this.isValid()) return false;
     this.latestRequestId = Math.max(this.latestRequestId, requestId);
+    // A refresh re-asks the server for its data, totals included.
+    this.totalsEpoch++;
     const purge = options?.purge === true;
     const targetId = this.resolveRefreshTarget(options);
     const target = this.listings.get(targetId);
@@ -1813,7 +1823,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     if (!aggregationSource || this.pivotStamps.size === 0) return;
     const params = this.lastRequestParams;
     try {
-      const result = await this.invokeAggregationSource(aggregationSource, {
+      const values = await this.fetchServerTotals(aggregationSource, {
         aggregates: [],
         aggregateScope: "all",
         filters: this.createAggregationFilters(),
@@ -1824,7 +1834,6 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         pivot: serializeServerPivot(this.pivot!),
       });
       if (requestSeq !== this.aggregateRequestSeq) return;
-      const values = result?.values ?? {};
       for (const [field, instanceID] of this.pivotStamps) {
         const value = values[field];
         if (value != null) this.aggregateValues.set(instanceID, value);
@@ -1834,6 +1843,34 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       this.aggregateValues.clear();
       console.error("Failed to fetch server-side aggregates", err);
     }
+  }
+
+  /**
+   * Whole-dataset totals for `request`, asked of the server once per distinct request. The footer
+   * re-runs on every block arrival, page move and expansion, but the totals depend only on what the
+   * request says (filters, quick filter, measures, pivot) and on the server's data — so an identical
+   * request reuses the answer, or the fetch still in flight, until the store is purged
+   * (storeGeneration), a refresh or transaction says the data may have changed (totalsEpoch), or a
+   * different source answers (the option set or cleared, a new data source). A failed fetch is
+   * forgotten, so the next footer run asks again.
+   */
+  private fetchServerTotals(
+    aggregationSource: ServerSideAggregationSource,
+    request: IServerSideAggregationRequest,
+  ): Promise<Record<string, any>> {
+    const key = `${this.storeGeneration}:${this.totalsEpoch}:${JSON.stringify(request)}`;
+    // resolveAggregationSource wraps the data source's method afresh on every call, so the source
+    // is identified by what it wraps.
+    const owner = this.serverAggregationSource ?? this.serverDataSource;
+    if (this.serverTotals?.key === key && this.serverTotals.owner === owner) return this.serverTotals.values;
+    const values = this.invokeAggregationSource(aggregationSource, request)
+      .then(result => (result?.values ?? result ?? {}) as Record<string, any>);
+    const entry = { key, owner, values };
+    this.serverTotals = entry;
+    values.catch(() => {
+      if (this.serverTotals === entry) this.serverTotals = null;
+    });
+    return values;
   }
 
   private invokeAggregationSource(
@@ -1892,7 +1929,7 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
     const params = this.lastRequestParams;
 
     try {
-      const result = await this.invokeAggregationSource(aggregationSource, {
+      const valuesObj = await this.fetchServerTotals(aggregationSource, {
         aggregates,
         aggregateScope: "all",
         filters: this.createAggregationFilters(),
@@ -1903,7 +1940,6 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
       });
 
       if (requestSeq !== this.aggregateRequestSeq) return;
-      const valuesObj = result?.values ?? result ?? {};
       for (const col of this.leafColumns) {
         const value = valuesObj?.[col.instanceID] ?? valuesObj?.[col.key];
         if (value != null) this.aggregateValues.set(col.instanceID, value);

@@ -298,6 +298,12 @@ const serverSideDataSource: IServerSideDataSource = {
 };
 ```
 
+The grid asks once per distinct request. Loading more rows (scrolling, paging,
+expanding a group) does not ask again, because the totals do not depend on which
+rows are loaded. A change of filters, quick filter, sort, measures or pivot does
+ask again, as do `refreshServerSideData()`, a transaction and a new aggregation
+source. A failed request is retried the next time the footer updates.
+
 Without a source the scope is locked to **Current page**: a programmatic or
 restored `"all"` becomes `"page"`, and **Entire dataset** stays in the footer's
 list greyed out, with a tooltip saying what would enable it, on the control and

@@ -26,6 +26,15 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   without `pivotFields`, warn once. `isPivotSupported()` is now false only with tree data, and the
   sheet strip's **+** tooltip says so ("Pivot sheets cannot be used with tree data").
 
+### Fixes
+
+- **Whole-dataset totals on the server-side row model are fetched once per distinct request.** The
+  grid used to call `getAggregates` / `serverSideAggregationSource` again on every block arrival,
+  page move and group expansion, though none of them changes the totals. It now asks again only
+  when the request changes (filters, quick filter, sort, measures, pivot), after
+  `refreshServerSideData()` or a transaction, when the aggregation source changes, or after a
+  failed request.
+
 ## 1.17.0 — 2026-11-17
 
 ### Features
