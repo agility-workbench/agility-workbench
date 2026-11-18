@@ -3,7 +3,7 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
-## Unreleased
+## 1.17.0 — 2026-11-17
 
 ### Features
 

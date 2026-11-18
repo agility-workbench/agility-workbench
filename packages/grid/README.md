@@ -673,6 +673,41 @@ data object (a replaced data object is asked again); `api.resetRowHeights()` re-
 measured as they are drawn, so the scroll height settles as you scroll, and rows that grow above
 the viewport keep what you are looking at in place.
 
+## Flex columns
+
+A column with `flex` takes a proportional share of the width the other unpinned columns leave:
+
+```ts
+createGrid(el, {
+  columnDefs: [
+    { colId: "id", key: "id", label: "ID", width: 80 },
+    { colId: "name", key: "name", label: "Name", flex: 2, minWidth: 160 },
+    { colId: "notes", key: "notes", label: "Notes", flex: 1 },
+  ],
+});
+```
+
+Flex columns stay within their `minWidth` / `maxWidth` and are re-shared when the grid resizes or
+columns are shown, hidden, pinned or moved; when the minimums do not fit, the centre scrolls.
+Pinned columns ignore `flex`. Resizing a flex column (by drag, `api.setColumnWidth` or an autosize)
+fixes it at its new width; `ColumnState.flex` saves and restores it.
+
+## Pagination
+
+```ts
+createGrid(el, {
+  pagination: true,
+  paginationAutoPageSize: true, // or pageSize / pageSizes, both updatable at runtime
+  paginationControls: {
+    controls: ["rowSummary", "firstPage", "previousPage", "pageSelector", "pageInput", "nextPage", "lastPage"],
+  },
+});
+```
+
+`paginationAutoPageSize` fits each page to the body's height. `"rowSummary"` ("1–100 of 1,234")
+and `"pageInput"` (go to page) are opt-in footer controls. `api.goToPage`, `api.setPageSize` and
+`api.getPaginationInfo()` drive and read pagination from code.
+
 ## Tree data
 
 Tree data supports four explicit relationship modes: three client-side ones, and `"server"` on the
