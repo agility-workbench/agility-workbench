@@ -3,6 +3,54 @@
 All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
 `@agility-workbench/angular-grid`) are versioned and released together.
 
+## 1.17.0 — 2026-11-17
+
+### Features
+
+- **Columns can take a proportional share of the width with `ColDef.flex`.** Flex columns in the
+  centre section share the centre viewport width the other centre columns leave over, in proportion
+  to their `flex` values, each kept within its `minWidth` (floored by `minResizeWidth`) and
+  `maxWidth`; a column held at a bound leaves the rest to the others, and when the minimums do not
+  fit the centre scrolls. The widths are whole pixels summing to the viewport exactly, re-shared
+  when the grid resizes, the vertical scrollbar comes or goes, and columns are shown, hidden,
+  pinned, moved, regrouped or redefined, with one `columnWidthsChanged` (`final: true`) when a width
+  moved. Works through `defaultColDef` and `groupColumnDef`; pinned columns, the row-number and the
+  checkbox columns never flex. Flex wins over content auto-sizing, while an explicit resize (a
+  header drag, a double-click fit, `api.setColumnWidth(s)`, `api.autoSizeColumns` /
+  `autoSizeAllColumns`) fixes the column at its new width; `api.sizeColumnsToFit` fits only the
+  non-flex columns. `ColumnState.flex` (`null` for a fixed column) is captured by
+  `getColumnState`, restored by `applyColumnState` and saved views, and `getColumnDefs` reports the
+  flex in effect. The layout probe gained `flex` cases (`rtl-flex` included) with `flex-gap` /
+  `flex-overflow` checks.
+
+- **`pageSize` and `pageSizes` can change on a mounted grid.** Both are updatable through
+  `updateGridOptions` and are live props/inputs in both wrappers (no longer creation-only). A new
+  `pageSize` re-pages from the first page, as `api.setPageSize` does, and the size already in force
+  is a no-op, so a re-render keeps the user's page; a new `pageSizes` list rebuilds the footer's
+  selector and keeps the page. The size in force is always offered, and `paginationChanged` fires
+  for either change.
+
+- **Pages can size themselves to the body with `paginationAutoPageSize`.** Each page holds the rows
+  that fit the body (`floor(body height / rowHeight)`, at least one), recomputed whenever the body
+  changes height, and a resize keeps the page's first row on the page it moves to. Only a change in
+  that row count re-pages. While it is on the rows-per-page selector is hidden and `pageSize` /
+  `api.setPageSize` are ignored with a one-time warning; with `getRowHeight` the grid-wide `rowHeight`
+  is used. Updatable, and a live prop/input in both wrappers. The layout probe gained a
+  `pagination-auto-page-size` case with `auto-page-scroll` / `auto-page-underfill` checks.
+
+- **Two opt-in footer controls: `"rowSummary"` and `"pageInput"`.** Add them to
+  `paginationControls.controls`. `rowSummary` shows the page's range and the total ("1–100 of
+  1,234", numbers formatted for the page's language) in a polite live region, "of at least" while a
+  server-side total is provisional and "0 of 0" with no rows. `pageInput` is a "Go to page" field:
+  Enter or blur commits, the page is clamped to the known range, and anything that is not a number
+  (or Escape) reverts. Both take part in the narrow-footer ladder (the field gives way before
+  rows-per-page while a page picker is shown, the summary last). New locale keys
+  `paginationRowSummary`, `paginationRowSummaryUnknownTotal`, `paginationRowSummaryEmpty` and
+  `goToPage`. The default footer is unchanged.
+
+- **A Pagination docs page** covers page sizes, auto page size, the footer controls, the API, server-side
+  behaviour and the known limits (group rows count toward the page size).
+
 ## 1.16.0 — 2026-11-09
 
 ### Features

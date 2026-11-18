@@ -65,6 +65,8 @@ const FOOTER_ITEMS = {
   aggregate: "aggregate",
   pageSize: "pageSize",
   edgePages: "edgePages",
+  rowSummary: "rowSummary",
+  pageInput: "pageInput",
   sheetAdd: "sheetAdd",
 } as const;
 
@@ -76,6 +78,11 @@ export class PaginationRenderer {
   nextPageBtn!: HTMLButtonElement;
   lastPageBtn!: HTMLButtonElement;
   pageButtonsContainer!: HTMLDivElement;
+  /** The opt-in "1–100 of 1,234" summary (`rowSummary`), a polite live region. */
+  rowSummaryEl: HTMLElement | null = null;
+  /** The opt-in "Go to page" field (`pageInput`). */
+  pageInput: HTMLInputElement | null = null;
+  private pageInputControl: HTMLElement | null = null;
   aggregateScopeSelect!: HTMLSelectElement;
   /** The select's "Entire dataset" option, kept so an unavailable scope can be greyed out or
    * taken out of the list and put back (see `syncWholeDatasetOption`). */
@@ -92,6 +99,12 @@ export class PaginationRenderer {
   private centerZone: HTMLDivElement;
   private endZone: HTMLDivElement;
   private controlsPaginationEnabled: boolean | null = null;
+  /**
+   * What the last build's control set depended on beyond the configured layout: auto page size
+   * (no size selector) and the selector's sizes. A change rebuilds the controls.
+   */
+  private controlsShapeKey: string | null = null;
+  private numberFormat: Intl.NumberFormat | null = null;
   private controlsAggregationAvailable: boolean | null = null;
   private controlsOptions: ResolvedPaginationControlsOptions;
   private responsive: ResponsiveBar | null = null;
@@ -173,6 +186,9 @@ export class PaginationRenderer {
     this.prevPageBtn = undefined!;
     this.nextPageBtn = undefined!;
     this.lastPageBtn = undefined!;
+    this.rowSummaryEl = null;
+    this.pageInput = null;
+    this.pageInputControl = null;
     this.navSection = null;
     const {
       paginationEnabled,
@@ -183,6 +199,7 @@ export class PaginationRenderer {
       pageSizes,
     } = core.getPaginationInfo();
     this.controlsPaginationEnabled = paginationEnabled;
+    this.controlsShapeKey = this.shapeKey(pageSizes);
     this.controlsAggregationAvailable = this.hasAggregatableColumns();
 
     this.aggregateSection = null;
@@ -203,6 +220,8 @@ export class PaginationRenderer {
     navSection.className = "pte-pagination-section pte-pagination-nav";
     this.navSection = navSection;
     for (const control of this.controlsOptions.controls) {
+      // Auto page size owns the size, so there is nothing for the selector to choose.
+      if (control === "pageSize" && core.isPaginationAutoPageSize()) continue;
       navSection.appendChild(this.buildPaginationControl(control, pageSize, pageSizes));
     }
 
@@ -261,6 +280,29 @@ export class PaginationRenderer {
         },
       });
     }
+    if (this.rowSummaryEl) {
+      const summary = this.rowSummaryEl;
+      items.push({
+        id: FOOTER_ITEMS.rowSummary,
+        el: summary,
+        // Information, not a control: it can go, and a range picker beside it still says where
+        // the user is.
+        stages: ["full", "hidden"],
+        applyStage: stage => this.setDisplaced(summary, stage === "hidden"),
+      });
+    }
+    // The page field only gives way to a page picker that still goes to any page; alone it is the
+    // footer's navigation, which never gives way.
+    if (this.pageInputControl && this.controlsOptions.controls.includes("pageSelector")) {
+      const control = this.pageInputControl;
+      items.push({
+        id: FOOTER_ITEMS.pageInput,
+        el: control,
+        stages: ["full", "hidden"],
+        applyStage: stage => this.setDisplaced(control, stage === "hidden"),
+        isPinned: displaceable(control),
+      });
+    }
     if (this.params.sheetAdd?.canAdd()) {
       const sheetAdd = this.params.sheetAdd;
       items.push({
@@ -281,7 +323,9 @@ export class PaginationRenderer {
     return [
       { id: "captions", barClass: "pte-footer-compact" },
       { id: "edgePages:hidden", itemId: FOOTER_ITEMS.edgePages, stage: "hidden" },
+      { id: "pageInput:hidden", itemId: FOOTER_ITEMS.pageInput, stage: "hidden" },
       { id: "pageSize:overflow", itemId: FOOTER_ITEMS.pageSize, stage: "overflow" },
+      { id: "rowSummary:hidden", itemId: FOOTER_ITEMS.rowSummary, stage: "hidden" },
       { id: "aggregate:overflow", itemId: FOOTER_ITEMS.aggregate, stage: "overflow" },
       { id: "sheetAdd:overflow", itemId: FOOTER_ITEMS.sheetAdd, stage: "overflow" },
     ];
@@ -430,7 +474,120 @@ export class PaginationRenderer {
       case "pageSelector": return this.buildPageSelectorControl();
       case "nextPage": return this.buildNavigationButton("next");
       case "lastPage": return this.buildNavigationButton("last");
+      case "rowSummary": return this.buildRowSummaryControl();
+      case "pageInput": return this.buildPageInputControl();
     }
+  }
+
+  private shapeKey(pageSizes: readonly number[]): string {
+    return `${this.params.core.isPaginationAutoPageSize()}|${pageSizes.join(",")}`;
+  }
+
+  private buildRowSummaryControl(): HTMLElement {
+    const summary = document.createElement("span");
+    summary.className = "pte-pagination-control pte-pagination-row-summary";
+    // Polite and atomic: a page change reads the whole new range once, after whatever the user is
+    // hearing; the text is only rewritten when it changes, so nothing is re-announced idly.
+    summary.setAttribute("aria-live", "polite");
+    summary.setAttribute("aria-atomic", "true");
+    this.rowSummaryEl = summary;
+    return summary;
+  }
+
+  private buildPageInputControl(): HTMLElement {
+    const { core } = this.params;
+    const wrapper = document.createElement("div");
+    wrapper.className = "pte-pagination-control pte-pagination-page-input-control";
+    const label = document.createElement("span");
+    label.className = "pte-pagination-label";
+    label.textContent = core.getLocaleText("goToPage");
+    label.id = `${core.id}-pagination-page-input-label`;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "pte-pagination-page-input";
+    input.min = "1";
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.setAttribute("aria-labelledby", label.id);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.commitPageInput();
+      } else if (e.key === "Escape") {
+        // Revert rather than let the grid treat Escape as its own.
+        e.stopPropagation();
+        this.syncPageInput(true);
+      }
+    });
+    input.addEventListener("blur", () => this.commitPageInput());
+    this.pageInput = input;
+    this.pageInputControl = wrapper;
+    wrapper.append(label, input);
+    return wrapper;
+  }
+
+  /**
+   * Go to the page typed in the field: clamped to the known pages (a provisional server-side total
+   * lets it past the last known page, as the "next" button does — the grid snaps back once the
+   * count pins); anything that is not a number puts the current page back.
+   */
+  private commitPageInput(): void {
+    const input = this.pageInput;
+    if (!input) return;
+    const info = this.params.core.getPaginationInfo();
+    const typed = Number(input.value.trim());
+    if (input.value.trim() === "" || !Number.isFinite(typed)) {
+      this.syncPageInput(true);
+      return;
+    }
+    const lastPage = info.totalRowCountKnown
+      ? Math.max(0, info.totalPageCount - 1)
+      : Number.POSITIVE_INFINITY;
+    const target = Math.max(0, Math.min(Math.floor(typed) - 1, lastPage));
+    if (target !== info.pageIndex) this.goToPage(target);
+    this.syncPageInput(true);
+  }
+
+  /** Show the current page in the field; leaves a value being typed alone unless `force`. */
+  private syncPageInput(force = false, info = this.params.core.getPaginationInfo()): void {
+    const input = this.pageInput;
+    if (!input) return;
+    const totalPages = Math.max(info.totalPageCount, 1);
+    if (info.totalRowCountKnown) input.max = String(totalPages);
+    else input.removeAttribute("max");
+    input.disabled = info.totalRowCount <= 0;
+    if (!force && input.ownerDocument.activeElement === input) return;
+    const value = String(Math.min(info.pageIndex, totalPages - 1) + 1);
+    if (input.value !== value) input.value = value;
+  }
+
+  private formatCount(value: number): string {
+    try {
+      this.numberFormat ??= new Intl.NumberFormat(this.params.root.closest("[lang]")?.getAttribute("lang") || undefined);
+    } catch {
+      this.numberFormat = new Intl.NumberFormat();
+    }
+    return this.numberFormat.format(value);
+  }
+
+  private syncRowSummary(info: GridEventPaginationChangedParams): void {
+    const summary = this.rowSummaryEl;
+    if (!summary) return;
+    const { core } = this.params;
+    const { pageIndex, pageSize, totalRowCount, totalRowCountKnown } = info;
+    let text: string;
+    if (totalRowCount <= 0) {
+      text = core.getLocaleText("paginationRowSummaryEmpty");
+    } else {
+      const first = Math.min(pageIndex * pageSize + 1, totalRowCount);
+      const last = Math.min((pageIndex + 1) * pageSize, totalRowCount);
+      text = core.getLocaleText(
+        totalRowCountKnown ? "paginationRowSummary" : "paginationRowSummaryUnknownTotal",
+        { first: this.formatCount(first), last: this.formatCount(last), total: this.formatCount(totalRowCount) },
+      );
+    }
+    if (summary.textContent !== text) summary.textContent = text;
+    summary.title = totalRowCountKnown ? "" : core.options.paginationUnknownTotalTooltip;
   }
 
   private buildPageSizeControl(pageSize: number, pageSizes: number[]): HTMLDivElement {
@@ -688,6 +845,7 @@ export class PaginationRenderer {
   }
 
   updateControls(params?: GridEventPaginationChangedParams) {
+    const info = params || this.params.core.getPaginationInfo();
     const {
       paginationEnabled,
       pageIndex,
@@ -695,10 +853,11 @@ export class PaginationRenderer {
       totalRowCount,
       totalPageCount,
       totalRowCountKnown,
-    } = params || this.params.core.getPaginationInfo();
+    } = info;
     if (
       this.controlsPaginationEnabled !== paginationEnabled
       || this.controlsAggregationAvailable !== this.hasAggregatableColumns()
+      || (paginationEnabled && this.controlsShapeKey !== this.shapeKey(info.pageSizes))
     ) {
       this.buildControls();
       return;
@@ -719,6 +878,8 @@ export class PaginationRenderer {
     }
 
     this.populatePageSelector(pageIndex, totalPageCount, totalRowCountKnown);
+    this.syncRowSummary(info);
+    this.syncPageInput(false, info);
 
     const atFirstPage = pageIndex <= 0;
     // While the total is provisional there may be pages past the last known one: "next" stays

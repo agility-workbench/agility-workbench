@@ -1,0 +1,185 @@
+---
+title: Pagination
+sidebar_position: 4
+---
+
+import { LiveFeatureGrid } from "@site/src/components/LiveFeatureGrid";
+import { FrameworkCode } from "@site/src/components/FrameworkCode";
+
+# Pagination
+
+Pagination splits the rows into pages and adds a footer to move between them.
+It works on both row models: the client-side model slices the rows it holds,
+the server-side model asks the server for the page's rows.
+
+<LiveFeatureGrid feature="pagination" />
+
+<FrameworkCode feature="pagination" />
+
+## Enabling it
+
+```ts
+const options = {
+  pagination: true,
+  pageSize: 25,
+  pageSizes: [25, 50, 100],
+} satisfies GridOptions;
+```
+
+`pagination` is updatable at runtime; turning it on or off returns to the first
+page. With pagination off the footer stays hidden unless something else
+(aggregation, sheet tabs) needs it.
+
+## Page sizes
+
+`pageSize` (default 100) is the number of rows per page and `pageSizes`
+(default `[25, 50, 100]`) the sizes the footer's **Rows per page** selector
+offers. Both can change on a mounted grid — as React props, Angular inputs or
+`api.updateGridOptions`:
+
+```ts
+api.updateGridOptions({ pageSizes: [10, 50, 200], pageSize: 50 });
+```
+
+- A new `pageSize` re-pages the rows and returns to the first page, as the
+  footer's selector and `api.setPageSize` do. Passing the size already in force
+  changes nothing, so re-rendering with the same props keeps the user's page.
+- `pageSizes` is sorted and stripped of non-positive entries. The size in force
+  is always offered: one missing from the list is added to it (with a console
+  warning when you supplied the list).
+- A new `pageSizes` list on its own keeps the page and rebuilds the selector.
+
+## Auto page size
+
+```ts
+const options = {
+  pagination: true,
+  paginationAutoPageSize: true,
+} satisfies GridOptions;
+```
+
+With `paginationAutoPageSize` each page holds exactly the rows that fit the
+body: `floor(body height / rowHeight)`, at least one. The size is recomputed
+whenever the body changes height — the grid's container resizing, the
+toolbar or pinned-row bands appearing, the horizontal scrollbar coming or
+going — and a resize keeps the current page's first row on the page it moves
+to. Only a change in the number of rows that fit re-pages, so
+`paginationChanged` does not fire for a resize that changes nothing.
+
+While it is on:
+
+- the footer's **Rows per page** selector is hidden;
+- `pageSize` and `api.setPageSize` are ignored, with a one-time console warning
+  (the rest of an `api.setPagination` call — page, enabled — still applies);
+- until the body has been measured (before the grid is in the document) the
+  page holds `pageSize` rows.
+
+Turning it off at runtime restores the configured `pageSize` and the selector.
+
+With [`getRowHeight`](../api/grid-options.mdx) the page is sized from the
+grid-wide `rowHeight`, not from the heights of the rows on the page, so pages
+with taller rows scroll and pages with shorter rows leave space below.
+
+## Footer controls
+
+`paginationControls.controls` chooses the footer's controls and their visual
+and keyboard order. The default is `["pageSize", "firstPage", "previousPage",
+"pageSelector", "nextPage", "lastPage"]`; two more are opt-in:
+
+```ts
+paginationControls: {
+  controls: ["rowSummary", "pageSize", "previousPage", "pageSelector", "pageInput", "nextPage"],
+}
+```
+
+| Control | What it shows |
+| --- | --- |
+| `pageSize` | The **Rows per page** selector (hidden under auto page size) |
+| `firstPage`, `previousPage`, `nextPage`, `lastPage` | Icon buttons, disabled at either end |
+| `pageSelector` | The page picker: a select by default, numbered buttons with `pageSelection: "buttons"` |
+| `rowSummary` | The page's row range and the total, such as "1–100 of 1,234" |
+| `pageInput` | A **Go to page** number field |
+
+`rowSummary` formats its numbers for the page's language (the nearest `lang`
+attribute) and is a polite live region, so a screen reader reads the new range
+after a page change. With no rows it reads "0 of 0"; while a server-side total
+is still provisional it reads "1–100 of at least 300" and carries the
+`paginationUnknownTotalTooltip` as its tooltip.
+
+`pageInput` commits on Enter or when it loses focus. The page is clamped to the
+known pages; anything that is not a number, and Escape, put the current page
+back. While a server-side total is provisional it can go past the last known
+page, as **Next page** can — the grid snaps back once the count is known.
+
+Their text comes from the locale keys `paginationRowSummary`,
+`paginationRowSummaryUnknownTotal`, `paginationRowSummaryEmpty` and `goToPage`
+(see [Localization](./localization.mdx)).
+
+### Page selection
+
+```ts
+paginationControls: {
+  pageSelection: "buttons", // "select" (default)
+  maxPageButtons: 7,        // first and last pages included; ellipses do not count
+  showPageLabel: false,     // drop the visible "Page" label; the accessible name stays
+}
+```
+
+The select lists every page as "3 of 12". Numbered buttons keep the first and
+last pages visible, centre a bounded window on the current page and mark the
+gaps with ellipses.
+
+### Narrow footers
+
+By default (`responsive: "collapse"`) a footer too narrow for its controls
+gives way one step at a time: the text labels first, then the first/last page
+buttons, then the **Go to page** field (only while a page picker is also
+shown), then **Rows per page** and the aggregate scope move into an overflow
+menu, and the row summary goes last. Page navigation itself never gives way;
+past the last step the footer scrolls. The footer follows the grid's direction,
+so in a right-to-left grid the controls run from the right.
+
+## API
+
+| Method | Does |
+| --- | --- |
+| `getPaginationInfo()` | The pagination state: `{ paginationEnabled, pageIndex, pageSize, totalRowCount, totalPageCount, totalRowCountKnown, pageSizes }` (`pageIndex` is 0-based) |
+| `goToPage(pageIndex)` | Go to a 0-based page, clamped to the known range |
+| `nextPage()`, `previousPage()`, `firstPage()`, `lastPage()` | Step through the pages |
+| `setPageSize(pageSize)` | Change the size and return to the first page |
+| `setPagination({ enabled?, pageIndex?, pageSize? })` | Any mix of the three, merged over the current state |
+
+`onPaginationChanged` (React prop, `paginationChanged` Angular output, or
+`api.on("paginationChanged", …)`) fires with the same object as
+`getPaginationInfo()` whenever any of it may have changed: the page, the size,
+the total, the selector's sizes, or pagination being turned on or off. See the
+[Grid API](../api/grid-api.mdx) reference.
+
+## Resetting the page on model changes
+
+By default the grid keeps the current page when the rows change, clamping to
+the last page if the change removed it. `resetPageOn` lists the changes that go
+back to the first page instead:
+
+```ts
+resetPageOn: ["filter", "quickFilter", "sort"],
+```
+
+## Server-side row model
+
+On the server-side model a page is a request for `pageSize` rows from
+`pageIndex * pageSize` (fetched in `serverSideBlockSize` blocks). When the data
+source does not report `totalRows`, the total is provisional until a short
+block marks the end: the page picker reads "3 of 12+", the row summary "of at
+least", **Next page** stays enabled so the user can probe for more, and a page
+past the real end snaps back once the end is found. See
+[Server-side data](./server-side-data.mdx).
+
+## Known limits
+
+- **Group rows count toward the page size.** Pages slice the flattened view, so
+  with row grouping or tree data a page of 25 holds 25 rows including group
+  headers, and a group's children can continue on the next page. There is no
+  `paginateChildRows` option yet.
+- Auto page size uses the grid-wide `rowHeight`; see above for variable-height
+  rows.

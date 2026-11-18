@@ -53,6 +53,14 @@ export interface GridLocaleText {
   /** Tooltip of the page selector while the server total is unknown (the
    * `paginationUnknownTotalTooltip` option wins over this key). */
   paginationUnknownTotal: string;
+  /** The opt-in `rowSummary` footer control: rows `{first}`–`{last}` of `{total}` (numbers formatted). */
+  paginationRowSummary: string;
+  /** As `paginationRowSummary` while the server-side total is provisional (`{total}` is a floor). */
+  paginationRowSummaryUnknownTotal: string;
+  /** The `rowSummary` control with no rows to page. */
+  paginationRowSummaryEmpty: string;
+  /** Accessible name (and placeholder) of the opt-in `pageInput` footer control. */
+  goToPage: string;
   aggregate: string;
   aggregateScopeNone: string;
   aggregateScopeCurrentPage: string;
@@ -557,6 +565,10 @@ export const DEFAULT_LOCALE_TEXT: GridLocaleText = {
   pageOfAtLeastTotal: "Page {page} of at least {total}",
   pageOfAtLeastTotalWithHint: "Page {page} of at least {total}. {hint}",
   paginationUnknownTotal: "More rows may exist on the server; the total updates as they load",
+  paginationRowSummary: "{first}–{last} of {total}",
+  paginationRowSummaryUnknownTotal: "{first}–{last} of at least {total}",
+  paginationRowSummaryEmpty: "0 of 0",
+  goToPage: "Go to page",
   aggregate: "Aggregate",
   aggregateScopeNone: "None",
   aggregateScopeCurrentPage: "Current page",

@@ -294,6 +294,7 @@ const labels: Record<DemoFeature, [string, string]> = {
   "column-groups": ["Column groups", "Expand Revenue and inspect nested headers"],
   "client-side-data": ["Client-side data", "Insert at source index 2, then sort or page local rows"],
   "server-side-data": ["Server-side data", "Scroll to request block-aligned slices"],
+  pagination: ["Pagination", "Type a page into Go to page, or turn on Auto page size"],
   filtering: ["Filtering", "Search rows, switch the search to Find in its ⋯ options, or use a column filter"],
   sorting: ["Sorting", "Shift-click sort icons for an ordered multi-sort"],
   selection: ["Selection", "Drag a range or select rows from row numbers"],
@@ -343,6 +344,17 @@ function largeData() {
   ];
   largeDataSet = { rows: largeRows, columns };
   return largeDataSet;
+}
+
+/** 1,234 orders for the pagination page, cycled from the shared ones; built on first use. */
+let paginationRowSet: Order[] | null = null;
+function paginationRows(): Order[] {
+  paginationRowSet ??= Array.from({ length: 1_234 }, (_, index) => ({
+    ...rows[index % rows.length],
+    id: `page-order-${index + 1}`,
+    orderNo: `AW-${String(2401 + index).padStart(4, "0")}`,
+  }));
+  return paginationRowSet;
 }
 
 const VIEWS_KEY = "awb-docs-demo-views";
@@ -419,6 +431,10 @@ export function FeatureGrid({ feature, compact = false }: { feature: DemoFeature
       ];
       break;
     case "client-side-data":
+      break;
+    case "pagination":
+      // Everything else on this page is a knob (see knobs.ts).
+      rowData = paginationRows();
       break;
     case "server-side-data":
       rowData = undefined;

@@ -174,6 +174,60 @@ model) to recompute content widths after each data refresh; declared and
 user-resized widths are kept. Enable a leading row-number column with
 `rowNumbers: true`.
 
+## Flex (proportional) widths
+
+```ts
+const options = {
+  columnDefs: [
+    { colId: "id", key: "id", label: "ID", width: 90 },
+    { colId: "name", key: "name", label: "Name", flex: 2, minWidth: 160 },
+    { colId: "notes", key: "notes", label: "Notes", flex: 1, maxWidth: 400 },
+    { colId: "total", key: "total", label: "Total", width: 120, pinned: "right" },
+  ],
+  // Or give every column a share: defaultColDef: { flex: 1 }.
+} satisfies GridOptions;
+```
+
+A column with `flex` takes a share of the **centre** viewport instead of a fixed
+width. The flex columns divide what the other visible centre columns leave
+over, in proportion to their `flex` values (above, Name gets twice Notes'
+share), so together the centre's columns fill the viewport exactly — no gap at
+the end, no horizontal scrollbar. Each flex column stays within its `minWidth`
+(floored at `minResizeWidth`) and `maxWidth`: a column that reaches a bound is
+held there and the others re-share the rest. When the minimums do not fit, the
+centre scrolls horizontally rather than squeezing a column below its minimum.
+The widths are whole pixels and always sum to the viewport, so they do not
+jitter.
+
+The layout follows the grid: resizing it, the vertical scrollbar appearing,
+hiding, showing, pinning, unpinning or moving columns, expanding a column
+group, a theme or font change, and new column definitions all re-share the
+width, with one `columnWidthsChanged` (`final: true`) whenever a width moved.
+Column virtualization, the header (including group headers over flex leaves),
+pinned rows, the aggregate row and right-to-left grids use the same widths.
+
+Rules worth knowing:
+
+- Only a positive number turns flex on; `0`, a negative number or no value is
+  a fixed column. `flex` works through `defaultColDef`, and the auto-group
+  column flexes through `groupColumnDef.flex`. The row-number and checkbox
+  columns never flex.
+- A **pinned** column with `flex` keeps its normal width: pinned sections are
+  clamped and never share the centre's space.
+- Flex wins over content auto-sizing: data loads and
+  `autosizeColumnsOnDataChange` leave flex columns alone, and a declared
+  `width` is ignored while the column flexes.
+- An explicit width turns flex **off** for that column, fixing it at its new
+  width: dragging its resize handle, double-clicking it to fit the content,
+  `setColumnWidth(s)`, and `autoSizeColumns` / `autoSizeAllColumns`. The
+  remaining flex columns re-share around it.
+- `sizeColumnsToFit()` leaves flex columns alone and fits only the other centre
+  columns into the space the flex columns are not using.
+- Column state captures it: `getColumnState()` reports `flex` (`null` for a
+  fixed column). `applyColumnState` with a number turns flex on, with `null`
+  turns it off (fixing the column at `widthPx`, or where it stands), and saved
+  views restore it. `getColumnDefs()` reports the `flex` in effect.
+
 ## Cell spanning
 
 ```ts
@@ -266,6 +320,8 @@ api.applyColumnState(savedState, { defaultState: { hidden: true } });
 
 Column state carries each column's sort too (`sort`, `null` when unsorted, and
 `sortIndex`); see [Sorting](./sorting.mdx#set-or-toggle-sorting-through-the-api).
+It also carries `flex` (`null` for a fixed-width column): a number restores a
+[flex column](#flex-proportional-widths), `null` fixes one at `widthPx`.
 
 ## Add or replace definitions at runtime
 

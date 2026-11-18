@@ -70,11 +70,11 @@ which run before the adapter.
 | `applyTransactionAsync(tx)` | Mutate rows immediately and defer model derivation/rendering into a shared batch; resolves after the flush with this call's counts |
 | `flushAsyncTransactions()` | Immediately finalize pending asynchronous transactions |
 | `setColumnDefs(defs)` | Replace column definitions (claims caller ownership of the schema — see below) |
-| `getColumnState()` | Capture width, order, pinning, visibility, and sort (`sort` / `sortIndex`, `null` when unsorted) |
-| `applyColumnState(state, options?)` | Merge or exactly restore state; entries with a `sort` field set (or, with `null`, clear) that column's sort |
-| `autoSizeColumns(colIds)` / `autoSizeAllColumns()` | Fit columns to their content, dropping user widths, with one `columnWidthsChanged` for the batch |
-| `setColumnWidth(colId, widthPx)` / `setColumnWidths(widths)` | Set widths as a resize drag would (clamped to the column's bounds, kept across autosizes); one event per call |
-| `sizeColumnsToFit()` | Scale the visible unpinned columns to fill the centre viewport exactly (pinned, `resizable: false`, and utility columns keep their widths) |
+| `getColumnState()` | Capture width, flex (`flex`, `null` for a fixed width), order, pinning, visibility, and sort (`sort` / `sortIndex`, `null` when unsorted) |
+| `applyColumnState(state, options?)` | Merge or exactly restore state; entries with a `sort` field set (or, with `null`, clear) that column's sort; a numeric `flex` makes the column flex (its `widthPx` is then ignored), `flex: null` fixes it at `widthPx` or its current width |
+| `autoSizeColumns(colIds)` / `autoSizeAllColumns()` | Fit columns to their content, dropping user widths (and `flex`), with one `columnWidthsChanged` for the batch |
+| `setColumnWidth(colId, widthPx)` / `setColumnWidths(widths)` | Set widths as a resize drag would (clamped to the column's bounds, kept across autosizes; a flex column becomes fixed); one event per call |
+| `sizeColumnsToFit()` | Scale the visible unpinned columns to fill the centre viewport exactly (pinned, `resizable: false`, `flex`, and utility columns keep their widths) |
 | `setColumnPinned(colIds, pinned)` | Pin one column (a colId) or several to `"left"` / `"right"`, or unpin with `null` — the column menu's Pin items; unpinnable columns are skipped; `columnsChanged` with `reason: "pin"` |
 | `setColumnsVisible(colIds, visible)` / `setColumnVisible(colId, visible)` | Show or hide columns; hiding skips `hideable: false` columns; `columnsChanged` with `reason: "visibility"`, none when nothing changes |
 | `moveColumn(colId, toIndex)` / `moveColumns(colIds, toIndex)` | Move columns (as a block, in the order given) to `toIndex` of `getColumnState()` order — every non-internal leaf, hidden included, left → centre → right. Each column stays in its section (the index is clamped to it); `lockPosition` and `movable: false` columns are skipped, locked columns keep their edge; a group's colId moves the group. One `columnsChanged` with `reason: "order"`, none when nothing moved |
@@ -177,7 +177,7 @@ like a header-click sort (`columnsChanged` with `reason: "sort"`, `onSortChanged
 | `setPagination({ enabled?, pageIndex?, pageSize? })` | Change any mix of the three, merged over the current state |
 | `goToPage(pageIndex)` | Go to a 0-based page |
 | `nextPage()` / `previousPage()` / `firstPage()` / `lastPage()` | Step through the pages |
-| `setPageSize(pageSize)` | Change the page size and return to the first page |
+| `setPageSize(pageSize)` | Change the page size and return to the first page (ignored, with a one-time warning, while `paginationAutoPageSize` is on) |
 
 ```ts
 api.setPagination({ enabled: true, pageSize: 50 });

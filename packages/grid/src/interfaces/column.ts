@@ -266,6 +266,20 @@ export interface ColDef<TData = any> {
   width?: number;    // fixed width
   minWidth?: number; // minimum width (resizable)
   maxWidth?: number; // maximum width (resizable)
+  /**
+   * Proportional width. Flex columns in the centre (unpinned) section share the centre viewport
+   * width the other centre columns leave over, in proportion to their `flex` values (`flex: 2`
+   * takes twice the share of `flex: 1`), each kept within its `minWidth` (floored by the grid's
+   * `minResizeWidth`) and `maxWidth`. When the mins do not fit, the centre scrolls horizontally.
+   * Re-laid out whenever the viewport or the centre's columns change; `width` is then ignored.
+   *
+   * Only a positive, finite number turns it on. A pinned column with `flex` keeps its normal
+   * width. Flex wins over content auto-sizing; an explicit resize — a header drag, a double-click
+   * auto-size, `api.setColumnWidth(s)`, `api.autoSizeColumns` / `autoSizeAllColumns` — turns flex
+   * off for that column, fixing it at its new width. `api.sizeColumnsToFit` leaves flex columns
+   * alone and fits only the others. Captured by `api.getColumnState()` (`flex`).
+   */
+  flex?: number;
   depth?: number;   // for hierarchical columns
   /**
    * Computes this column's value on a leaf row. Receives the row NODE, not the row data object:

@@ -3338,6 +3338,34 @@
   min-width: 140px;
 }
 
+/* Opt-in footer controls. The row summary is plain muted text, kept on one line so the footer's
+   width ladder (which can hide it) measures it whole; tabular figures stop it jiggling as the
+   range moves. */
+.pte-pagination-row-summary {
+  font-size: 13px;
+  color: var(--pte-muted-text-color);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pte-pagination-page-input {
+  box-sizing: border-box;
+  height: 32px;
+  width: 64px;
+  border: 1px solid var(--pte-control-border-color);
+  border-radius: 6px;
+  padding: 0 6px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  background-color: var(--pte-input-bg-color);
+  color: var(--pte-text-color);
+}
+
+.pte-pagination-page-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Compact footer: the picker sizes to its own longest option instead of a floor set for long page
    counts. Page navigation is the one thing the footer never gives up, so at the widths where it is
    all that is left it should not also be the widest thing in the bar. */

@@ -1,4 +1,11 @@
-import { createGrid, AggregateType, ColumnType, type ColDef, type ColumnPanelTrigger } from "@grid";
+import {
+  createGrid,
+  AggregateType,
+  ColumnType,
+  type ColDef,
+  type ColumnPanelTrigger,
+  type PaginationControlsOptions,
+} from "@grid";
 
 import { checkbox, code, demoRoot, field, gridHost, h, note, select, toolbarRow } from "../dom";
 
@@ -14,7 +21,7 @@ const CUSTOMERS = ["Acme", "Globex", "Initech", "Umbrella", "Stark", "Wayne"];
 const REGIONS = ["North", "South", "East", "West"];
 
 function buildRows(): OrderRow[] {
-  return Array.from({ length: 24 }, (_, index) => ({
+  return Array.from({ length: 240 }, (_, index) => ({
     id: index + 1,
     customer: CUSTOMERS[index % CUSTOMERS.length],
     region: REGIONS[index % REGIONS.length],
@@ -47,8 +54,21 @@ function buildColumnDefs(allowAggregation: boolean): ColDef[] {
   ];
 }
 
+/** The default footer, optionally with the opt-in row summary and "Go to page" field. */
+function paginationControls(extra: boolean): PaginationControlsOptions {
+  return extra
+    ? {
+      controls: [
+        "rowSummary", "pageSize", "firstPage", "previousPage", "pageSelector", "pageInput", "nextPage", "lastPage",
+      ],
+    }
+    : {};
+}
+
 export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
   let pagination = false;
+  let autoPageSize = false;
+  let extraControls = true;
   let aggregateRevenue = false;
   let allowAggregation = true;
 
@@ -59,6 +79,15 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
     api.updateGridOptions({ pagination });
     updateReadout();
   });
+  const autoPageSizeBox = checkbox(autoPageSize, value => {
+    autoPageSize = value;
+    api.updateGridOptions({ paginationAutoPageSize: autoPageSize });
+  });
+  const extraControlsBox = checkbox(extraControls, value => {
+    extraControls = value;
+    api.updateGridOptions({ paginationControls: paginationControls(extraControls) });
+  });
+  const pageSizeSelect = select([8, 16, 24], 8, value => api.updateGridOptions({ pageSize: Number(value) }));
   const aggregateBox = checkbox(aggregateRevenue, value => setRevenueAggregate(value));
   const allowBox = checkbox(allowAggregation, value => {
     if (!value && aggregateRevenue) setRevenueAggregate(false);
@@ -75,6 +104,9 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
   container.appendChild(demoRoot(
     toolbarRow(
       field("Pagination", paginationBox),
+      field("Auto page size", autoPageSizeBox),
+      field("Page size", pageSizeSelect),
+      field("Row summary + Go to page", extraControlsBox),
       field("Sum Revenue", aggregateBox),
       field("Columns aggregatable", allowBox),
       footerReadout,
@@ -96,7 +128,12 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
       + " pagination or the Revenue aggregate to reveal it; turn both off to hide it again. Disable ",
       code("aggregatable"),
       " for every column to remove aggregation from the column menus and omit the aggregate controls"
-      + " from the shared footer.",
+      + " from the shared footer. With pagination on, ",
+      code("paginationAutoPageSize"),
+      " sizes each page to the rows that fit the body (resize the window: no vertical scrollbar, the"
+      + " page follows) and hides Rows per page; Page size is a live ",
+      code("pageSize"),
+      " update (ignored while auto is on).",
     ),
     host,
   ));
@@ -108,6 +145,8 @@ export function mountFooterVisibilityDemo(container: HTMLElement): () => void {
     pagination,
     pageSize: 8,
     pageSizes: [8, 16, 24],
+    paginationAutoPageSize: autoPageSize,
+    paginationControls: paginationControls(extraControls),
     columnPanel: { trigger: "rail" },
   });
 

@@ -540,6 +540,38 @@ export const Grid = React.forwardRef<IGridAPI | null, GridProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [paginationControlsKey]);
 
+    // Page sizes reconcile live; createGrid already applied the creation values, so the first run
+    // is skipped (re-applying the creation pageSize would also undo a size the user picked in the
+    // footer). An inline `pageSizes` array compares by contents.
+    const pageSizeMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!pageSizeMountedRef.current) {
+        pageSizeMountedRef.current = true;
+        return;
+      }
+      instanceRef.current?.api.updateGridOptions({ pageSize: props.pageSize });
+    }, [props.pageSize]);
+
+    const pageSizesKey = JSON.stringify(props.pageSizes ?? null);
+    const pageSizesMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!pageSizesMountedRef.current) {
+        pageSizesMountedRef.current = true;
+        return;
+      }
+      instanceRef.current?.api.updateGridOptions({ pageSizes: props.pageSizes });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pageSizesKey]);
+
+    const autoPageSizeMountedRef = useRef(false);
+    useLayoutEffect(() => {
+      if (!autoPageSizeMountedRef.current) {
+        autoPageSizeMountedRef.current = true;
+        return;
+      }
+      instanceRef.current?.api.updateGridOptions({ paginationAutoPageSize: props.paginationAutoPageSize ?? false });
+    }, [props.paginationAutoPageSize]);
+
     // Reconfigure the quick filter live (anchor, clearOnClose, mode, popover controls, enable/disable)
     // without remounting the grid. Serialized so an inline-object `quickFilter` prop doesn't rebuild
     // the widget on every render — only when the config's contents actually change.

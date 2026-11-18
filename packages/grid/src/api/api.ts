@@ -48,6 +48,7 @@ import { QuickFilterFindMatch, QuickFilterFindState } from "../interfaces/find";
 import { PivotResultColumnDescriptor } from "../interfaces/pivot";
 import { AggregateKind, ColumnAggregate } from "../interfaces/aggregate";
 import { Column } from "../column/column";
+import { normalizeFlex } from "../column/flexColumns";
 import { ColumnFilterMenuService } from "../filter/filterMenuService";
 import { FilterPanelSpec, FilterValueAsyncSourceParamsImpl, SetFilterOptions } from "../filter/types";
 import {
@@ -307,6 +308,13 @@ export class GridAPI implements IGridAPI {
     if (has("rowSelection")) config.setRowSelectionOptions(options.rowSelection);
     if (has("pagination")) config.togglePagination(options.pagination ?? false);
     if (has("paginationControls")) config.setPaginationControls(options.paginationControls);
+    if (has("pageSize") || has("pageSizes") || has("paginationAutoPageSize")) {
+      const sizes: Parameters<IGridCore["setPageSizeOptions"]>[0] = {};
+      if (has("pageSize")) sizes.pageSize = options.pageSize;
+      if (has("pageSizes")) sizes.pageSizes = options.pageSizes;
+      if (has("paginationAutoPageSize")) sizes.paginationAutoPageSize = options.paginationAutoPageSize;
+      this.core.setPageSizeOptions(sizes);
+    }
     if (has("serverSideDataSource")) config.setServerSideDataSource(options.serverSideDataSource);
     if (has("serverSideAggregationSource")) {
       config.setServerSideAggregation(options.serverSideAggregationSource);
@@ -637,7 +645,12 @@ export class GridAPI implements IGridAPI {
         console.warn(`setPagination: pageSize must be a positive integer; got ${update.pageSize}. Ignoring.`);
         return;
       }
-      pageSize = update.pageSize;
+      // Auto page size owns the size; the rest of the update (page, enabled) still applies.
+      if (this.core.isPaginationAutoPageSize()) {
+        if (update.pageSize !== current.pageSize) this.core.warnAutoPageSizeOverride("setPageSize");
+      } else {
+        pageSize = update.pageSize;
+      }
     }
     // A new page size re-pages the rows, so the current index means nothing under it: back to the
     // first page unless the caller says where to go, as the footer's size selector does.
@@ -880,6 +893,8 @@ export class GridAPI implements IGridAPI {
       const col = model.resolve(colId) ?? model.getAutoGroupColumnByColId(colId);
       if (!col) continue;
       const before = new Map(col.getVisibleLeaves().map(leaf => [leaf.instanceID, leaf.computedWidth]));
+      // An explicit width fixes a flex column at it (AG Grid's rule).
+      if (!col.isLeadingUtilityColumn()) model.clearFlex([col]);
       // The resize-handle path (clamping, group spreading, the user-width stamp). It reports every
       // leaf it touched; only real changes are announced.
       for (const id of model.resizeColumn(col.instanceID, widthPx)) {
@@ -897,9 +912,11 @@ export class GridAPI implements IGridAPI {
     // planned here are the widths it will accept.
     const { minResizeWidth = 0, maxColumnWidth = Number.POSITIVE_INFINITY } = this.core.getOptions();
     const leaves = model.getCenterLeaves().filter(col => col.isVisible() && !col.isLeadingUtilityColumn());
-    const fixed = leaves.filter(col => !col.resizable);
+    // Flex columns (`ColDef.flex`) are left alone: they keep the width the flex layout gave them and
+    // the rest are fitted around it — after which the flex layout re-runs over what is left.
+    const fixed = leaves.filter(col => !col.resizable || col.getFlex() != null);
     const flexible = leaves
-      .filter(col => col.resizable)
+      .filter(col => col.resizable && col.getFlex() == null)
       .map(col => ({
         col,
         width: col.computedWidth,
@@ -1015,6 +1032,8 @@ export class GridAPI implements IGridAPI {
   // id list would read as "every visible column", so a batch that changed nothing emits nothing.
   private emitWidthsChanged(instanceIds: Set<string>): void {
     if (instanceIds.size === 0) return;
+    // The flex columns re-share what the batch left them; those it moved ride along.
+    for (const id of this.core.applyFlexLayout()) instanceIds.add(id);
     const model = this.core.getColumnModel();
     const cols = [...instanceIds].map(id => model.getById(id)).filter((col): col is Column => col != null);
     if (cols.length === 0) return;
@@ -1060,6 +1079,7 @@ export class GridAPI implements IGridAPI {
       if (!aggregates.has(item.colId)) aggregates.set(item.colId, item.type);
     }
     const defaultHidden = this.core.getOptions().defaultColDef?.hidden === true;
+    const defaultFlex = normalizeFlex(this.core.getOptions().defaultColDef?.flex) != null;
     const toDef = (col: Column, topLevel: boolean): ColDef => {
       const def: ColDef = { ...col.explicitColDef, colId: col.colId };
       delete def.children;
@@ -1077,6 +1097,12 @@ export class GridAPI implements IGridAPI {
         return def;
       }
       def.width = col.computedWidth;
+      // The flex in effect: a resize that fixed the column drops it, applyColumnState can set it.
+      const flex = col.getFlex();
+      if (flex != null) def.flex = flex;
+      // Fixed, but a definition without `flex` would inherit defaultColDef's: spell out 0 (no flex).
+      else if (defaultFlex) def.flex = 0;
+      else delete def.flex;
       const sort = sorts.get(col.colId);
       if (sort) {
         def.sort = sort.dir;

@@ -3,6 +3,7 @@ export type DemoFeature =
   | "column-groups"
   | "client-side-data"
   | "server-side-data"
+  | "pagination"
   | "filtering"
   | "sorting"
   | "selection"
@@ -124,6 +125,34 @@ api.applyTransaction({
   update: [{ rowId: "order-1", row: changedOrder }],
   remove: ["order-2"],
 });`,
+  },
+  pagination: {
+    react: String.raw`<Grid
+  rowIdKey="id"
+  rowData={orders}
+  columnDefs={columns}
+  {{options}}
+  onPaginationChanged={({ pageIndex, totalPageCount }) => {
+    console.log(\`page \${pageIndex + 1} of \${totalPageCount}\`);
+  }}
+/>`,
+    angular: String.raw`<awb-grid
+  rowIdKey="id"
+  [rowData]="orders"
+  [columnDefs]="columns"
+  {{options}}
+  (paginationChanged)="onPage($event)"
+/>`,
+    core: String.raw`const api = createGrid(host, {
+  rowIdKey: "id",
+  rowData: orders,
+  columnDefs,
+  {{options}}
+});
+
+api.goToPage(4);                   // 0-based
+api.updateGridOptions({ pageSize: 50 }); // back to the first page
+const { pageIndex, totalPageCount } = api.getPaginationInfo();`,
   },
   "server-side-data": {
     react: String.raw`const dataSource: IServerSideDataSource = {

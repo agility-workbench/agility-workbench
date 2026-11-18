@@ -53,6 +53,12 @@ export interface IColumnModel {
   readonly leafColumnLookup: Map<string, { section: ColumnSection; globalIndex: number; localIndex: number }>;
   computeColumnWidths(measureCtx: any, params: any, rows: any[]): void;
   resizeColumn(colId: string, widthPx: number): string[];
+  /** Whether this column's width is currently decided by the flex layout (`ColDef.flex`): a
+   * visible centre leaf with a flex weight, once the renderer has measured the centre viewport. */
+  isFlexing(col: Column): boolean;
+  /** Turn flex off for these columns (a group: its visible leaves), as an explicit resize or
+   * auto-size does. Returns whether any of them had a flex weight. */
+  clearFlex(cols: Iterable<Column>): boolean;
   getAncestors(colId: string): Column[];
   /** Pre-order walk of the displayed column tree, or of `roots` when another tree is given. */
   walkColumns(callback: (col: Column) => void, roots?: Column[]): void;

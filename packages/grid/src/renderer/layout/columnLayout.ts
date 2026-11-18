@@ -48,6 +48,9 @@ interface ColumnLayoutRendererParams {
   /** Last step of a width pass, for what sizes itself from the sections just laid out: the user
    * full-width rows (centre viewport wide) and the ActionFrame popover over a moved cell. */
   afterColumnWidths?: () => void;
+  /** Very last step of a width pass: report the centre viewport width the pass left to the core,
+   * which re-lays `ColDef.flex` columns out (and, when they moved, starts one more pass). */
+  syncFlexViewport?: () => void;
   /** The body scroller — the element that actually owns the vertical scrollbar being compensated
    * for. Read directly rather than modelled, so the compensation cannot disagree with the scrollbar
    * it is compensating for. */
@@ -332,6 +335,7 @@ export class ColumnLayoutRenderer {
     this.params.updateVerticalScrollLayout?.();
     this.params.updatePinnedRowsLayout?.();
     this.params.afterColumnWidths?.();
+    this.params.syncFlexViewport?.();
   }
 
   /**

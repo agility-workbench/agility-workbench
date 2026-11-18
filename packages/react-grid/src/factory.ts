@@ -109,6 +109,7 @@ export function getGridOptions(props: GridProps): GridOptions {
   setIfDefined(options, "resetPageOn", props.resetPageOn);
   setIfDefined(options, "pageSize", props.pageSize);
   setIfDefined(options, "pageSizes", props.pageSizes);
+  setIfDefined(options, "paginationAutoPageSize", props.paginationAutoPageSize);
   setIfDefined(options, "serverSideBlockSize", props.serverSideBlockSize);
   setIfDefined(options, "serverSideMaxBlocks", props.serverSideMaxBlocks);
   setIfDefined(options, "rowModelType", props.rowModelType);

@@ -64,7 +64,9 @@ the column's locale (`1.234,5` in `de-DE`). A `formatterOptions` the platform's 
 `width`, `minWidth`, `maxWidth`, `pinned`, and `hidden` describe initial layout.
 A declared `width` is kept on data load (content autosize applies only to
 columns without one) and is clamped by the column's `minWidth` / `maxWidth`;
-a user resize or an explicit fit-to-content replaces it.
+a user resize or an explicit fit-to-content replaces it. `flex` gives a centre
+column a proportional share of the viewport instead (see
+[Flex widths](../examples/columns.mdx#flex-proportional-widths)).
 `sortable`, `resizable`, `movable`, `hideable`, `groupable`, `aggregatable`,
 `pivotable`, `exportable`, and `editable` govern user capabilities.
 `pivotComparator` orders a pivoted column's distinct values across the
@@ -73,6 +75,7 @@ management drawer.
 
 | Field | Purpose |
 | --- | --- |
+| `flex` | A positive number: the column takes a proportional share of the centre viewport left after the fixed centre columns (`flex: 2` gets twice the share of `flex: 1`), within its `minWidth` (floored at `minResizeWidth`) / `maxWidth`; the centre scrolls when the minimums do not fit. Ignored on a pinned column. Flex wins over content autosize; a resize drag, double-click fit, `setColumnWidth(s)` or `autoSizeColumns` fixes the column at its new width. Captured as `flex` in column state. See [Flex widths](../examples/columns.mdx#flex-proportional-widths) |
 | `lockPosition` | `true` / `"left"` holds the column at the left edge of its section, `"right"` at the right edge. It cannot be dragged or moved (header, column panel, `api.moveColumn`), other columns never displace it, and `applyColumnState`, saved views and `setColumnDefs` put it back at its edge. Pinning still applies (locked within the pinned section). On a group child it locks within the group; on a group definition it locks the group. See [Locking a column's position](../examples/columns.mdx#locking-a-columns-position) |
 | `wrapHeaderText` | The header label wraps onto several lines instead of being truncated; icons and menu keep their place. Without `autoHeaderHeight` a wrapped label is clipped at the configured height |
 | `wrapText` | The cell's text wraps onto several lines instead of being truncated. Without `autoHeight` the row keeps its height and wrapped text is clipped |
