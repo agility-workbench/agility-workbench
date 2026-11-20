@@ -1175,6 +1175,9 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
 
     this.warnIfNoRowIdStrategy();
     const generation = this.storeGeneration;
+    // Sorts on generated columns the server has not named a field for yet: they cannot travel on
+    // this request (see serializeSorts), so its rows come back in some other order.
+    const sortsAwaitingField = this.pivotSortsAwaitingField((this.lastRequestParams ?? params).sortModel);
     const epoch = listing.epoch;
     const isFill = params.reason !== "viewport";
     this.fetchSeq++;
@@ -1249,7 +1252,18 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         }
 
         // Before the rows are ingested: they are stamped under the instanceIDs this reconciles.
-        if (this.pivot && listing.id === ROOT_LISTING_ID) this.applyPivotFields(result);
+        if (this.pivot && listing.id === ROOT_LISTING_ID) {
+          this.applyPivotFields(result);
+          // A sort this request had to leave off (its column's field was unknown — the pivot was
+          // just reconfigured) is sendable now: ask again, sorted, rather than paint rows in an
+          // order the header's sort indicator does not describe. Once only: the re-request carries
+          // the field, and a column the response did not name stays unsortable.
+          if (sortsAwaitingField.some(colId => this.pivotFieldByColId.has(colId)) && this.lastRequestParams) {
+            this.applyRequest({ ...this.lastRequestParams, id: this.latestRequestId, reason: "sort" });
+            if (settled && this.loadingDepth === 0) this.listener.onLoadingEnd(this.latestRequestId);
+            return;
+          }
+        }
 
         this.listings.set(listing.id, listing);
         let rows = (result?.rows ?? []) as Row[];
@@ -1743,6 +1757,14 @@ export class ServerSideRowModel<Row extends object = any> implements IRowModel<R
         caseSensitive: quickFilter.caseSensitive,
       },
     };
+  }
+
+  /** colIds of the sorted generated columns that have no server field yet. */
+  private pivotSortsAwaitingField(sortModel: IRowModelRequestParams["sortModel"] | undefined): string[] {
+    if (!this.pivot || !sortModel) return [];
+    return sortModel.items
+      .map(item => item.col.colId)
+      .filter(colId => isPivotResultColId(colId) && !this.pivotFieldByColId.has(colId));
   }
 
   private serializeSorts(sortModel: IRowModelRequestParams["sortModel"] | undefined): IServerSideSort[] {

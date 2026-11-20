@@ -251,6 +251,9 @@ const serverSideDataSource: IServerSideDataSource = {
   `pivotKeys` are raw values, one per `pivotBy` key, with `null` for blanks (the
   same convention as `groupKeys`). The grid orders the header itself, by the
   pivot column's `pivotComparator`, then its sort comparator, with blanks last.
+  The sort comparator is called without row nodes here, because no rows sit
+  behind the server's pivot values, so a comparator that reads the nodes needs
+  `pivotComparator` instead.
   This is the same order as the client-side pivot, so the array order does not
   matter. Fields for a measure that was not requested, or with the wrong number
   of `pivotKeys`, are ignored with a console warning. A root response without

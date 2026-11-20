@@ -18,7 +18,10 @@ All three packages (`@agility-workbench/grid`, `@agility-workbench/react-grid`,
   `maxPivotColumns` and `pivotColumnLimitReached` as client-side. It never asks for leaf rows: the
   deepest row-group level does not expand, and with no row groups the request is for the single
   grand-total row, shown as **Total**. A sort on a generated column is sent with its field as the
-  key. A change of pivot columns, measures or row groups refetches. Footer grand totals per
+  key; when a reconfigured pivot reloads before the server has named that field again, the grid
+  asks once more, sorted, as soon as it has. A change of pivot columns, measures or row groups
+  refetches. The header order calls a column's sort comparator without row nodes (there are no
+  rows behind the server's pivot values); a comparator that reads them needs `pivotComparator`. Footer grand totals per
   generated column come from `getAggregates` / `serverSideAggregationSource`, whose request gains
   the same `pivot` block. Without one, the footer of a grouped server-side pivot stays empty. The
   column panel, the toolbar toggle, the state layers, sheets and the pivot export work unchanged;

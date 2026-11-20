@@ -442,7 +442,9 @@ export interface ColDef<TData = any> {
    * Orders this column's distinct values across the generated pivot header when the column is
    * pivoted on: `(a, b) => number` over raw cell values, applied ascending. When omitted, the
    * column's sort `comparator` (or its type-derived default) orders the pivot values; blanks
-   * always sort last.
+   * always sort last. On the server-side row model the sort comparator is called without row nodes
+   * (`nodeA`/`nodeB` are undefined: the pivot values come from the server's `pivotFields`, with no
+   * rows behind them), so a comparator that reads the nodes needs this option instead.
    */
   pivotComparator?: (a: any, b: any) => number;
   resizable?: boolean;

@@ -126,6 +126,8 @@ export function finishPivotDiscovery(params: {
       const bBlank = b.key === BLANK_GROUP_KEY;
       if (aBlank || bBlank) return aBlank && bBlank ? 0 : aBlank ? 1 : -1;
       if (pivotCmp) return pivotCmp(a.value, b.value);
+      // No representative leaf on the server-side model: the comparator gets the values alone
+      // (ColDef.pivotComparator documents this).
       if (sortCmp) return sortCmp(a.value, b.value, a.firstLeaf as IRowNode, b.firstLeaf as IRowNode);
       return collator.compare(a.key, b.key);
     });

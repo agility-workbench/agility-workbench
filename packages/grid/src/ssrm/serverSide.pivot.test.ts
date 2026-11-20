@@ -16,6 +16,7 @@ import { PIVOT_TOTAL_GROUP_ID } from "../csrm/pivot";
 import { BLANK_GROUP_KEY } from "../csrm/rowGroup";
 import { pivotLeafColId } from "../interfaces/pivot";
 import { ExportRenderer } from "../renderer/exportRenderer";
+import { GridAPI } from "../api/api";
 
 const measurer: ITextMeasurer = { measure: (t: string) => t.length * 7 };
 
@@ -60,6 +61,8 @@ interface PivotServerOptions {
   omitFields?: boolean;
   /** Extra entries appended to pivotFields as returned. */
   extraFields?: IServerSidePivotField[];
+  /** A server-provided schema, returned on every root response. */
+  schema?: () => { columns: any[]; schemaVersion?: string };
 }
 
 // A tiny in-memory pivot server: groups by the requested level, stamps one value per declared
@@ -99,8 +102,9 @@ function makePivotServer(options: PivotServerOptions = {}) {
     getRows: ({ request, success }: IServerSideGetRowsParams) => {
       requests.push(structuredClone(request));
       const rows = DATA.filter(row => request.groupKeys.every(k => (row as any)[k.key] === k.value));
+      const schema = request.groupKeys.length === 0 && options.schema ? options.schema() : {};
       if (!request.pivot) {
-        success({ rows: rows.slice(request.startRow, request.endRow), totalRows: rows.length });
+        success({ rows: rows.slice(request.startRow, request.endRow), totalRows: rows.length, ...schema });
         return;
       }
       let groupRows: any[];
@@ -126,6 +130,7 @@ function makePivotServer(options: PivotServerOptions = {}) {
       }
       const root = request.groupKeys.length === 0;
       success({
+        ...schema,
         rows: groupRows.slice(request.startRow, request.endRow),
         totalRows: groupRows.length,
         ...(root && !options.omitFields
@@ -476,5 +481,107 @@ describe("server-side pivot", () => {
     expect(lines[0].split(",").slice(1)).toEqual(["Q1", "Q2", "(Blanks)"]);
     expect(lines).toContain("EMEA,20,17,");
     expect(lines).toContain("APAC,5,40,1");
+  });
+
+  it("re-asks, sorted, when a sort on a generated column could not travel with the request", async () => {
+    const { source, requests } = makePivotServer();
+    const core = makeGrid(source);
+    await flush();
+    enterPivot(core);
+    await flush();
+    const q2 = core.getColumnModel().getLeaves().find(c => c.colId === "pv:Q2|revenue|sum")!;
+    core.dispatch({ type: "sortModelSet", sortItems: [{ key: q2.instanceID, dir: "desc" }] });
+    await flush();
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+
+    // A measure change resets the field names: the reload goes out without the Q2 sort, and the
+    // grid asks again once the response names the field.
+    core.dispatch({
+      type: "aggregateModelSet",
+      aggregateModels: [{ key: "revenue", type: AggregateType.SUM }, { key: "revenue", type: AggregateType.MAX }],
+    });
+    await flush();
+
+    const rootRequests = requests.filter(r => r.pivot && r.groupKeys.length === 0);
+    const [unsorted, resorted] = rootRequests.slice(-2);
+    expect(unsorted.sorts).toEqual([]);
+    expect(resorted.sorts).toEqual([{ key: fieldName(["Q2"], "revenue", "sum"), dir: "desc" }]);
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["APAC", "EMEA"]);
+    // Once only.
+    await flush();
+    expect(requests.filter(r => r.pivot && r.groupKeys.length === 0)).toHaveLength(rootRequests.length);
+  });
+
+  it("switches between a flat and a pivot view state, as sheets and saved views do", async () => {
+    const { source, requests } = makePivotServer();
+    const core = makeGrid(source);
+    const api = new GridAPI(core);
+    await flush();
+    const flatState = api.captureViewState();
+    core.dispatch({ type: "pivotModeSet", on: true });
+    enterPivot(core);
+    await flush();
+    const pivotState = api.captureViewState();
+
+    api.applyViewState(flatState);
+    await flush();
+    expect(core.getPivotMode()).toBe(false);
+    expect(lastRequest(requests).pivot).toBeUndefined();
+    expect(viewNodes(core)).toHaveLength(6);
+
+    api.applyViewState(pivotState);
+    await flush();
+    expect(core.getPivotMode()).toBe(true);
+    expect(lastRequest(requests).pivot?.pivotBy).toEqual(["quarter"]);
+    expect(leafColIds(core)).toContain("pv:Q2|revenue|sum");
+    const [emea] = viewNodes(core);
+    expect(emea.groupKey).toBe("EMEA");
+    expect(cell(core, emea, "pv:Q2|revenue|sum")).toBe(17);
+  });
+
+  it("pages through the group rows with the pivot on every request", async () => {
+    const { source, requests } = makePivotServer();
+    const core = makeGrid(source, { pagination: true, pageSize: 1 });
+    await flush();
+    enterPivot(core);
+    await flush();
+    expect(viewNodes(core).map(n => n.groupKey)).toEqual(["EMEA"]);
+    expect(core.getPaginationInfo().totalPageCount).toBe(2);
+
+    core.dispatch({ type: "paginationSet", enabled: true, pageIndex: 1, pageSize: 1 });
+    await flush();
+    const [apac] = viewNodes(core);
+    expect(apac.groupKey).toBe("APAC");
+    expect(cell(core, apac, "pv:Q2|revenue|sum")).toBe(40);
+    expect(lastRequest(requests).pivot?.pivotBy).toEqual(["quarter"]);
+  });
+
+  it("takes a server schema and pivotFields from the same response, also when the schema changes", async () => {
+    let version = "1";
+    const columns = () => COLUMN_DEFS.map(d => ({ ...d }));
+    const { source, requests } = makePivotServer({ schema: () => ({ columns: columns(), schemaVersion: version }) });
+    // No columns from props: the schema is the server's.
+    const core = new GridCore(measurer, { rowIdKey: "id", rowModelType: "serverSide", serverSideBlockSize: 50 });
+    core.dispatch({ type: "themeFontSet", headerFont: "12px sans", cellFont: "12px sans", reason: "test" });
+    core.setServerSideDataSource(source);
+    await flush();
+    expect(leafColIds(core)).toEqual(["region", "country", "quarter", "revenue"]);
+
+    core.dispatch({ type: "pivotModeSet", on: true });
+    enterPivot(core);
+    await flush();
+    expect(leafColIds(core)).toContain("pv:Q2|revenue|sum");
+    expect(cell(core, viewNodes(core)[0], "pv:Q2|revenue|sum")).toBe(17);
+
+    // A new schema version arrives while pivoted: the roles survive, the pivot is reconciled.
+    version = "2";
+    core.refreshServerSideData({ purge: true });
+    await flush();
+    const settled = requests.length;
+    await flush();
+    expect(requests.length).toBe(settled);
+    expect(core.getPivotMode()).toBe(true);
+    expect(leafColIds(core)).toContain("pv:Q2|revenue|sum");
+    expect(cell(core, viewNodes(core)[0], "pv:Q2|revenue|sum")).toBe(17);
   });
 });

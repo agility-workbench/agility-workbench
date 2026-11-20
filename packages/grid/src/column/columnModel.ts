@@ -1423,16 +1423,20 @@ export class ColumnModel implements IColumnModel {
     }
 
     const collator = column.getCollator();
+    // The node's value when there is a node; the value handed in when there is none — a
+    // server-side pivot orders its header from pivot values the server sent, with no rows behind
+    // them (see finishPivotDiscovery).
+    const valueOf = (value: any, node: IRowNode | undefined) => (node ? column.getValue(node) : value);
     const comparator = numericLikely
       ? (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => {
-        const av = column.getValue(nodeA), bv = column.getValue(nodeB);
+        const av = valueOf(a, nodeA), bv = valueOf(b, nodeB);
         if (av === bv) return 0;
         if (av == null) return -1;
         if (bv == null) return 1;
         return (Number(av) - Number(bv));
       }
       : (a: any, b: any, nodeA: IRowNode, nodeB: IRowNode) => {
-        const av = column.getValue(nodeA), bv = column.getValue(nodeB);
+        const av = valueOf(a, nodeA), bv = valueOf(b, nodeB);
         if (av === bv) return 0;
         if (av == null) return -1;
         if (bv == null) return 1;
